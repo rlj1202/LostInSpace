@@ -23,12 +23,18 @@ func (terrain *Terrain) GetBlock(x, y int64) *Block {
 	return terrain.Chunks[chunkCoord].At(x&0xf, y&0xf)
 }
 
-func (terrain *Terrain) SetBlock(block *Block) {
-	x := int64(block.X)
-	y := int64(block.Y)
-	chunkCoord := Coord{x / CHUNK_WIDTH, y / CHUNK_HEIGHT}
+func (terrain *Terrain) SetBlock(game *Game, block *Block) {
+	chunkX := int64(block.X) / CHUNK_WIDTH
+	chunkY := int64(block.Y) / CHUNK_HEIGHT
+	blockX := int64(block.X) % CHUNK_WIDTH
+	blockY := int64(block.Y) % CHUNK_HEIGHT
+	chunkCoord := Coord{chunkX, chunkY}
+	chunk := terrain.Chunks[chunkCoord]
+	block.X = blockX
+	block.Y = blockY
 
-	terrain.Chunks[chunkCoord].Set(block)
+	chunk.Set(block)
+	chunk.BlockContainerObject.Rebake(game)
 }
 
 func (terrain *Terrain) GenerateChunk(coord Coord) *Chunk {

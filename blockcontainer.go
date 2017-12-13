@@ -48,15 +48,19 @@ func (object *BlockContainerObject) Draw() {
 
 func (object *BlockContainerObject) Rebake(game *Game) {
 	// Replace vertex buffer object
-	gl.BindBuffer(gl.VERTEX_ARRAY, object.vbo)
-
 	mesh, verticesCount, totalBytes := containerMesh(game, object.container)
 	object.verticesCount = verticesCount
-	gl.BufferSubData(gl.VERTEX_ARRAY, 0, totalBytes, gl.Ptr(mesh))
+	gl.BindBuffer(gl.ARRAY_BUFFER, object.vbo)
+	gl.BufferSubData(gl.ARRAY_BUFFER, 0, totalBytes, gl.Ptr(mesh))
 
 	// Destory all fixtures and recreate fixtures
-	for fixtureIter := object.body.GetFixtureList(); fixtureIter != nil; fixtureIter = fixtureIter.GetNext() {
-		fixtureIter.Destroy()
+	fixtures := make([]*box2d.B2Fixture, 0)
+	for fixture := object.body.GetFixtureList(); fixture != nil; fixture = fixture.GetNext() {
+		fixtures = append(fixtures, fixture)
+	}
+	// The reason why store fixtures temporarily in new slice is destroy fixture will affect fixture list.
+	for _, fixture := range fixtures {
+		object.body.DestroyFixture(fixture)
 	}
 	containerFixtures(game, object.container, object.body)
 }
@@ -128,7 +132,7 @@ func containerMesh(game *Game, container BlockContainer) ([]float32, int32, int)
 
 func containerFixtures(game *Game, container BlockContainer, body *box2d.B2Body) {
 	container.ForEach(func(block *Block) {
-		if block.BlockType == "" {
+		if block == nil || block.BlockType == "" {
 			return
 		}
 

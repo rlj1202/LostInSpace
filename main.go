@@ -134,13 +134,36 @@ func update(game *Game, window *glfw.Window, deltaTime time.Duration) {
 			button := mouseEvent.Button
 			xpos := mouseEvent.XPos
 			ypos := mouseEvent.YPos
+
+			x, y := game.GameRenderer.ToWorldCoord(float32(xpos), float32(ypos))
+			blockX, blockY := int64(x+0.5), int64(y+0.5)
+
 			if action == glfw.Press {
 				if button == glfw.MouseButtonLeft {
-					x, y := game.GameRenderer.ToWorldCoord(float32(xpos), float32(ypos))
 					fmt.Printf("LMB pressed: world coordinate (%v, %v)\n", x, y)
+
+					block := game.Terrain.GetBlock(blockX, blockY)
+					if block != nil {
+						fmt.Printf("	BlockType: %v\n", block.BlockType)
+					}
+					game.Terrain.SetBlock(game, &Block{
+						BlockType: "",
+						Coord: Coord{
+							X: blockX,
+							Y: blockY,
+						},
+					})
 				}
 				if button == glfw.MouseButtonRight {
 					fmt.Printf("RMB pressed: %v, %v\n", xpos, ypos)
+
+					game.Terrain.SetBlock(game, &Block{
+						BlockType: "stone",
+						Coord: Coord{
+							X: blockX,
+							Y: blockY,
+						},
+					})
 				}
 				if button == glfw.MouseButtonMiddle {
 					fmt.Printf("MMB pressed: %v, %v\n", xpos, ypos)
