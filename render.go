@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-gl/gl/v4.1-core/gl"
+	"github.com/go-gl/gl/v4.1-compatibility/gl"
+	"github.com/go-gl/glfw/v3.2/glfw"
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -20,15 +21,18 @@ const (
 		uniform mat4 projectionMat;
 		uniform mat4 cameraMat;
 		uniform mat4 translateMat;
+		uniform mat4 rotateMat;
 
-		in vec3 vp;
-		in vec2 vpTexCoord;
+		layout(location = 0) in vec3 vp;
+		layout(location = 1) in vec2 vpTexCoord;
+		layout(location = 2) in float layer;
 
-		out vec2 fragTexCoord;
+		out vec3 texCoord;
 
 		void main() {
-			fragTexCoord = vpTexCoord;
-			gl_Position = projectionMat * cameraMat * translateMat * vec4(vp, 1.0);
+			texCoord = vec3(vpTexCoord, layer);
+			
+			gl_Position = projectionMat * cameraMat * translateMat * rotateMat * vec4(vp, 1.0);
 		}
 	` + "\x00"
 
@@ -36,44 +40,39 @@ const (
 		#version 410
 
 		uniform sampler2DArray tex;
-		uniform int layer;
 
-		in vec2 fragTexCoord;
+		in vec3 texCoord;
 
-		out vec4 frag_colour;
+		out vec4 fragColor;
 
 		void main() {
-			frag_colour = texture(tex, vec3(fragTexCoord, layer));
+			fragColor = texture(tex, texCoord);
 		}
 	` + "\x00"
 )
 
 var (
+	// temporal vao
 	quad = []float32{
-		-0.5, 0.5, 0, 0, 0,
-		-0.5, -0.5, 0, 0, 1,
-		0.5, -0.5, 0, 1, 1,
+		-0.5, 0.5, 0, 0, 0, 0,
+		-0.5, -0.5, 0, 0, 1, 0,
+		0.5, -0.5, 0, 1, 1, 0,
 
-		-0.5, 0.5, 0, 0, 0,
-		0.5, -0.5, 0, 1, 1,
-		0.5, 0.5, 0, 1, 0,
+		-0.5, 0.5, 0, 0, 0, 0,
+		0.5, -0.5, 0, 1, 1, 0,
+		0.5, 0.5, 0, 1, 0, 0,
 	}
 )
 
 type GameRenderer struct {
 	*Game
 
-	program uint32
+	shaderProgram *Shader
 
 	projectionMat mgl32.Mat4
 	cameraMat     mgl32.Mat4
 	translateMat  mgl32.Mat4
-
-	projectionMatLoc int32
-	cameraMatLoc     int32
-	translateMatLoc  int32
-	textureLoc       int32
-	layerLoc         int32
+	rotateMat     mgl32.Mat4
 
 	blockTexture uint32
 	vao          uint32
@@ -81,19 +80,55 @@ type GameRenderer struct {
 	blockTextureLayerIndex map[BlockType]int32
 }
 
+type Shader struct {
+	program uint32
+
+	vertexShader   uint32
+	fargmentShader uint32
+}
+
+type TerrainRenderer struct { // TODO
+	*Shader
+
+	blockTexture uint32
+}
+
+func (renderer *GameRenderer) GetTextureIndex(blockType BlockType) (int32, bool) {
+	index, exist := renderer.blockTextureLayerIndex[blockType]
+	return index, exist
+}
+
+func (renderer *GameRenderer) ToWorldCoord(x, y float32) (float32, float32) {
+	width, height := glfw.GetCurrentContext().GetSize()
+	y = float32(height) - y
+	x = x*2.0/float32(width) - 1.0
+	y = y*2.0/float32(height) - 1.0
+	screenCoord := mgl32.NewVecNFromData([]float32{x, y, 0, 1}).Vec4()
+	m := renderer.projectionMat.Mul4(renderer.cameraMat)
+	mInv := m.Inv()
+	worldCoord := mInv.Mul4x1(screenCoord)
+	return worldCoord.X(), worldCoord.Y()
+}
+
+func (renderer *GameRenderer) ToScreenCoord(x, y float32) (float32, float32) {
+	worldCoord := mgl32.NewVecNFromData([]float32{x, y, 0, 1}).Vec4()
+	m := renderer.projectionMat.Mul4(renderer.cameraMat)
+	screenCoord := m.Mul4x1(worldCoord)
+	return screenCoord.X(), screenCoord.Y()
+}
+
 func (renderer *GameRenderer) Init(width, height uint64, blockTypeDescriptors []*BlockTypeDescriptor) {
-	renderer.program = initOpenGL()
+	initOpenGL()
+	program, err := NewShaderProgram(vertexShaderSource, fragmentShaderSource)
+	if err != nil {
+		panic(err)
+	}
+	renderer.shaderProgram = program
 	renderer.blockTextureLayerIndex = make(map[BlockType]int32)
 
-	renderer.projectionMatLoc = gl.GetUniformLocation(renderer.program, gl.Str("projectionMat\x00"))
-	renderer.cameraMatLoc = gl.GetUniformLocation(renderer.program, gl.Str("cameraMat\x00"))
-	renderer.translateMatLoc = gl.GetUniformLocation(renderer.program, gl.Str("translateMat\x00"))
-	renderer.textureLoc = gl.GetUniformLocation(renderer.program, gl.Str("tex\x00"))
-	renderer.layerLoc = gl.GetUniformLocation(renderer.program, gl.Str("layer\x00"))
+	program.UniformInt("tex", 0)
 
-	gl.ProgramUniform1i(renderer.program, renderer.textureLoc, 0)
-
-	renderer.vao = makeVao(renderer.program, quad)
+	renderer.vao = makeVao(renderer.shaderProgram.program, quad)
 	blockTexture, err := renderer.loadBlockTextures(blockTypeDescriptors)
 	if err != nil {
 		panic(err)
@@ -105,7 +140,8 @@ func (renderer *GameRenderer) Init(width, height uint64, blockTypeDescriptors []
 
 func (renderer *GameRenderer) RenderGame(dt time.Duration) {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-	gl.UseProgram(renderer.program)
+	program := renderer.shaderProgram
+	program.Bind()
 
 	cameraWidthHalf := float32(renderer.Camera.Width) / 2.0
 	cameraHeightHalf := float32(renderer.Camera.Height) / 2.0
@@ -114,75 +150,124 @@ func (renderer *GameRenderer) RenderGame(dt time.Duration) {
 		-cameraHeightHalf, cameraHeightHalf,
 		float32(5.0), float32(-5.0))
 
-	renderer.cameraMat = mgl32.Translate3D(float32(-renderer.Game.Camera.Position[0]), float32(-renderer.Game.Camera.Position[1]), 0)
-	gl.ProgramUniformMatrix4fv(renderer.program, renderer.projectionMatLoc, 1, false, &renderer.projectionMat[0])
-	gl.ProgramUniformMatrix4fv(renderer.program, renderer.cameraMatLoc, 1, false, &(renderer.cameraMat[0]))
-
+	renderer.cameraMat = mgl32.Translate3D(
+		float32(-renderer.Game.Camera.GetPosition().X),
+		float32(-renderer.Game.Camera.GetPosition().Y),
+		0,
+	)
+	program.UniformMatrix4("projectionMat", renderer.projectionMat)
+	program.UniformMatrix4("cameraMat", renderer.cameraMat)
 	renderer.renderTerrain(renderer.Game.Terrain)
 	renderer.renderObjects()
 }
 
 func (renderer *GameRenderer) renderTerrain(terrain *Terrain) {
-	gl.BindVertexArray(renderer.vao)
-
+	program := renderer.shaderProgram
 	for _, chunk := range terrain.Chunks {
-		for _, block := range chunk.Blocks {
-			blockX := float32(int64(block.X) + chunk.X*16)
-			blockY := float32(int64(block.Y) + chunk.Y*16)
+		renderer.translateMat = mgl32.Translate3D(float32(chunk.X*16), float32(chunk.Y*16), 0)
+		renderer.rotateMat = mgl32.HomogRotate3DZ(0)
+		program.UniformMatrix4("translateMat", renderer.translateMat)
+		program.UniformMatrix4("rotateMat", renderer.rotateMat)
 
-			renderer.translateMat = mgl32.Translate3D(blockX, blockY, 0)
+		chunk.BlockContainerObject.Draw()
+		/*
+			for _, block := range chunk.Blocks {
+				blockX := float32(int64(block.X) + chunk.X*16)
+				blockY := float32(int64(block.Y) + chunk.Y*16)
 
-			//scale := float32(1.0)
-			//scaleMat := mgl32.Scale3D(scale, scale, scale)
-			//transformationMat = scaleMat.Mul4(transformationMat)
+				renderer.translateMat = mgl32.Translate3D(blockX, blockY, 0)
 
-			//minX, minY := toCoord(0, 0, projectionMat, transformationMat)
-			//maxX, maxY := toCoord(width, height, projectionMat, transformationMat)
+				//scale := float32(1.0)
+				//scaleMat := mgl32.Scale3D(scale, scale, scale)
+				//transformationMat = scaleMat.Mul4(transformationMat)
 
-			//if blockX < minX || maxX < blockX || blockY < minY || maxY < blockY {
-			//	continue
-			//}
+				//minX, minY := toCoord(0, 0, projectionMat, transformationMat)
+				//maxX, maxY := toCoord(width, height, projectionMat, transformationMat)
 
-			if block.BlockType == "" {
-				continue
+				//if blockX < minX || maxX < blockX || blockY < minY || maxY < blockY {
+				//	continue
+				//}
+
+				if block.BlockType == "" {
+					continue
+				}
+				layer := renderer.blockTextureLayerIndex[block.BlockType]
+				gl.ProgramUniform1i(renderer.program, renderer.layerLoc, layer)
+
+				gl.ProgramUniformMatrix4fv(renderer.program, renderer.translateMatLoc, 1, false, &(renderer.translateMat[0]))
+
+				gl.DrawArrays(gl.TRIANGLES, 0, int32(len(quad)/3))
 			}
-			layer := renderer.blockTextureLayerIndex[block.BlockType]
-			gl.ProgramUniform1i(renderer.program, renderer.layerLoc, layer)
-
-			gl.ProgramUniformMatrix4fv(renderer.program, renderer.translateMatLoc, 1, false, &(renderer.translateMat[0]))
-			gl.DrawArrays(gl.TRIANGLES, 0, int32(len(quad)/3))
-		}
+		*/
 	}
 }
 
 func (renderer *GameRenderer) renderObjects() {
+	//gl.BindVertexArray(renderer.vao)
+	program := renderer.shaderProgram
+
 	entities := renderer.Game.Entities
 	for _, entity := range entities {
-		position := entity.GetPosition()
+		body := entity.BlockContainerObject.body
 
-		gl.ProgramUniform1i(renderer.program, renderer.layerLoc, 0)
+		rotation := body.GetAngle()
+		position := body.GetPosition()
 
-		renderer.translateMat = mgl32.Translate3D(float32(position.X), float32(position.Y), 0)
-		gl.ProgramUniformMatrix4fv(renderer.program, renderer.translateMatLoc, 1, false, &(renderer.translateMat[0]))
-		gl.DrawArrays(gl.TRIANGLES, 0, int32(len(quad)/3))
+		renderer.translateMat = mgl32.Translate3D(
+			float32(position.X),
+			float32(position.Y),
+			float32(0),
+		)
+		renderer.rotateMat = mgl32.HomogRotate3DZ(float32(rotation))
+
+		program.UniformMatrix4("translateMat", renderer.translateMat)
+		program.UniformMatrix4("rotateMat", renderer.rotateMat)
+
+		entity.Draw()
 	}
 }
 
-func toGlPos(x, y float32, projectionMat, transformationMat mgl32.Mat4) (float32, float32) {
-	coord := projectionMat.Mul4(transformationMat).Mul4x1(mgl32.NewVecNFromData([]float32{x, y, 0, 1}).Vec4())
-	return coord.X(), coord.Y()
+func NewShaderProgram(vertexShaderRaw, fragmentShaderRaw string) (*Shader, error) {
+	vertexShader, err := compileShader(vertexShaderRaw, gl.VERTEX_SHADER)
+	if err != nil {
+		return nil, err
+	}
+	fragmentShader, err := compileShader(fragmentShaderRaw, gl.FRAGMENT_SHADER)
+	if err != nil {
+		return nil, err
+	}
+
+	program := gl.CreateProgram()
+	gl.AttachShader(program, vertexShader)
+	gl.AttachShader(program, fragmentShader)
+	gl.LinkProgram(program)
+
+	return &Shader{program, vertexShader, fragmentShader}, nil
 }
 
-func toCoord(x, y float32, projectionMat, transformationMat mgl32.Mat4) (float32, float32) {
-	coord := projectionMat.Mul4(transformationMat).Inv().Mul4x1(mgl32.NewVecNFromData([]float32{x, y, 0, 1}).Vec4())
-	return coord.X(), coord.Y()
+func (shader *Shader) Bind() {
+	gl.UseProgram(shader.program)
 }
 
-func compileShader(source string, shaderType uint32) (uint32, error) {
+func (shader *Shader) GetUniformLoc(name string) int32 {
+	return gl.GetUniformLocation(shader.program, gl.Str(name+"\x00"))
+}
+
+func (shader *Shader) UniformInt(name string, value int32) {
+	loc := shader.GetUniformLoc(name)
+	gl.ProgramUniform1i(shader.program, loc, value)
+}
+
+func (shader *Shader) UniformMatrix4(name string, mat mgl32.Mat4) {
+	loc := shader.GetUniformLoc(name)
+	gl.ProgramUniformMatrix4fv(shader.program, loc, 1, false, &(mat[0]))
+}
+
+func compileShader(raw string, shaderType uint32) (uint32, error) {
 	shader := gl.CreateShader(shaderType)
 
-	csources, free := gl.Strs(source)
-	gl.ShaderSource(shader, 1, csources, nil)
+	source, free := gl.Strs(raw)
+	gl.ShaderSource(shader, 1, source, nil)
 	free()
 	gl.CompileShader(shader)
 
@@ -213,14 +298,14 @@ func makeVao(prog uint32, points []float32) uint32 {
 	gl.BindVertexArray(vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, vbo)
 
-	vpAttrib := uint32(gl.GetAttribLocation(prog, gl.Str("vp\x00")))
-	gl.EnableVertexAttribArray(vpAttrib)
-	gl.VertexAttribPointer(vpAttrib, 3, gl.FLOAT, false, 5*4, gl.PtrOffset(0))
+	gl.EnableVertexAttribArray(0)
+	gl.VertexAttribPointer(0, 3, gl.FLOAT, false, 6*4, gl.PtrOffset(0))
 
-	vpTexCoordAttrib := uint32(gl.GetAttribLocation(prog, gl.Str("vpTexCoord\x00")))
-	gl.EnableVertexAttribArray(vpTexCoordAttrib)
-	gl.VertexAttribPointer(vpTexCoordAttrib, 2, gl.FLOAT, false, 5*4, gl.PtrOffset(3*4))
+	gl.EnableVertexAttribArray(1)
+	gl.VertexAttribPointer(1, 2, gl.FLOAT, false, 6*4, gl.PtrOffset(3*4))
 
+	gl.EnableVertexAttribArray(2)
+	gl.VertexAttribPointer(2, 1, gl.FLOAT, false, 6*4, gl.PtrOffset(5*4))
 	return vao
 }
 
@@ -258,7 +343,7 @@ func (renderer *GameRenderer) loadBlockTextures(blockTypeDescriptors []*BlockTyp
 	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
 	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 
 	gl.BindTexture(gl.TEXTURE_2D_ARRAY, 0)
 
@@ -290,8 +375,8 @@ func loadTexture(file string) (uint32, error) {
 	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA,
 		int32(rgba.Rect.Size().X), int32(rgba.Rect.Size().Y), 0,
 		gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(rgba.Pix))
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
 
@@ -301,26 +386,14 @@ func loadTexture(file string) (uint32, error) {
 }
 
 // initOpenGL initializes OpenGL and returns an initialized program.
-func initOpenGL() uint32 {
+func initOpenGL() {
 	if err := gl.Init(); err != nil {
 		panic(err)
 	}
 	version := gl.GoStr(gl.GetString(gl.VERSION))
 	log.Println("Opengl version", version)
 
-	vertexShader, err := compileShader(vertexShaderSource, gl.VERTEX_SHADER)
-	if err != nil {
-		panic(err)
-	}
-	fragmentShader, err := compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER)
-	if err != nil {
-		panic(err)
-	}
-
-	prog := gl.CreateProgram()
-	gl.AttachShader(prog, vertexShader)
-	gl.AttachShader(prog, fragmentShader)
-	gl.LinkProgram(prog)
+	gl.ClearColor(0.0, 0.0, 0.1, 1.0)
 
 	// Enable Anti-aliasing
 	gl.Enable(gl.BLEND)
@@ -330,6 +403,4 @@ func initOpenGL() uint32 {
 	gl.Enable(gl.MULTISAMPLE)
 	gl.Hint(gl.POLYGON_SMOOTH_HINT, gl.NICEST)
 	gl.Hint(gl.LINE_SMOOTH_HINT, gl.NICEST)
-
-	return prog
 }
