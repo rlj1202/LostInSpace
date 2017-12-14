@@ -143,8 +143,8 @@ func (renderer *GameRenderer) RenderGame(dt time.Duration) {
 	program := renderer.shaderProgram
 	program.Bind()
 
-	cameraWidthHalf := float32(renderer.Camera.Width) / 2.0
-	cameraHeightHalf := float32(renderer.Camera.Height) / 2.0
+	cameraWidthHalf := float32(renderer.Camera.Width) / 2.0 / float32(renderer.Camera.Zoom)
+	cameraHeightHalf := float32(renderer.Camera.Height) / 2.0 / float32(renderer.Camera.Zoom)
 	renderer.projectionMat = mgl32.Ortho(
 		-cameraWidthHalf, cameraWidthHalf,
 		-cameraHeightHalf, cameraHeightHalf,

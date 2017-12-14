@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	_ "image/png"
+	"math"
 	"os"
 	"runtime"
 
@@ -182,6 +183,8 @@ func update(game *Game, window *glfw.Window, deltaTime time.Duration) {
 		case event.ScrollEvent:
 			scrollEvent := e.(event.ScrollEvent)
 			fmt.Printf("Scroll x:%v, y:%v\n", scrollEvent.XOff, scrollEvent.YOff)
+			game.Camera.Zoom += scrollEvent.YOff / 20.0
+			game.Camera.Zoom = math.Max(game.Camera.Zoom, 0.01)
 		case event.CursorEnterEvent:
 			enterEvent := e.(event.CursorEnterEvent)
 			fmt.Printf("Cursor entered: %v\n", enterEvent.Entered)
