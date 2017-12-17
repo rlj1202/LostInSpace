@@ -20,10 +20,6 @@ type World struct {
 	*box2d.B2World
 }
 
-type Player struct {
-	*box2d.B2Body
-}
-
 type Camera struct {
 	// Deprecated
 	Velocity [2]float64
@@ -42,6 +38,8 @@ func (game *Game) Init(width, height uint64, descriptors []*BlockTypeDescriptor)
 	b2World := box2d.MakeB2World(box2d.MakeB2Vec2(0, 0))
 	game.World.B2World = &b2World
 
+	game.Player = NewPlayer(game)
+
 	game.Camera = &Camera{
 		Velocity: [2]float64{0, 0},
 		Position: [2]float64{0, 0},
@@ -49,16 +47,10 @@ func (game *Game) Init(width, height uint64, descriptors []*BlockTypeDescriptor)
 		Height:   0,
 		Zoom:     1.0,
 	}
-	cameraBodyDef := box2d.NewB2BodyDef()
-	cameraBodyDef.Type = box2d.B2BodyType.B2_dynamicBody
-	cameraBody := game.World.B2World.CreateBody(cameraBodyDef)
-	cameraBody.SetLinearDamping(2.0)
-	game.Camera.B2Body = cameraBody
+	game.Camera.B2Body = game.Player.B2Body
 
 	game.Terrain = new(Terrain)
 	game.Terrain.Chunks = make(map[Coord]*Chunk)
-
-	game.Player = new(Player)
 
 	game.GameRenderer = new(GameRenderer)
 	game.GameRenderer.Game = game

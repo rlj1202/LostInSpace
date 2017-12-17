@@ -193,28 +193,19 @@ func update(game *Game, window *glfw.Window, deltaTime time.Duration) {
 			fmt.Printf("Cursor pos: %v, %v\n", posEvent.XPos, posEvent.YPos)
 		}
 	}
-	acc := 1000.0
 	force := 40.0
 	if window.GetKey(glfw.KeyW) != glfw.Release {
-		game.Camera.Velocity[1] += acc * deltaTime.Seconds()
 		game.Camera.B2Body.ApplyForceToCenter(box2d.MakeB2Vec2(0, force), true)
 	}
 	if window.GetKey(glfw.KeyS) != glfw.Release {
-		game.Camera.Velocity[1] -= acc * deltaTime.Seconds()
 		game.Camera.B2Body.ApplyForceToCenter(box2d.MakeB2Vec2(0, -force), true)
 	}
 	if window.GetKey(glfw.KeyA) != glfw.Release {
-		game.Camera.Velocity[0] -= acc * deltaTime.Seconds()
 		game.Camera.B2Body.ApplyForceToCenter(box2d.MakeB2Vec2(-force, 0), true)
 	}
 	if window.GetKey(glfw.KeyD) != glfw.Release {
-		game.Camera.Velocity[0] += acc * deltaTime.Seconds()
 		game.Camera.B2Body.ApplyForceToCenter(box2d.MakeB2Vec2(force, 0), true)
 	}
-	game.Camera.Velocity[0] *= 0.9
-	game.Camera.Velocity[1] *= 0.9
-	game.Camera.Position[0] += game.Camera.Velocity[0] * deltaTime.Seconds()
-	game.Camera.Position[1] += game.Camera.Velocity[1] * deltaTime.Seconds()
 }
 
 func keyInput(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {

@@ -37,6 +37,9 @@ func (chunk *Chunk) Set(block *Block) {
 		// panic
 		return
 	}
+	if chunk == nil {
+		return
+	}
 	chunk.Blocks[x+y*CHUNK_WIDTH] = block
 }
 

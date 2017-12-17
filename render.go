@@ -39,14 +39,21 @@ const (
 	fragmentShaderSource = `
 		#version 410
 
-		uniform sampler2DArray tex;
+		uniform sampler2D tex;
+		uniform sampler2DArray arrayTex;
+
+		uniform int texMode;
 
 		in vec3 texCoord;
 
 		out vec4 fragColor;
 
 		void main() {
-			fragColor = texture(tex, texCoord);
+			if (texMode == 0) {
+				fragColor = texture(tex, texCoord.xy);
+			} else if (texMode == 1) {
+				fragColor = texture(arrayTex, texCoord);
+			}
 		}
 	` + "\x00"
 )
@@ -74,8 +81,10 @@ type GameRenderer struct {
 	translateMat  mgl32.Mat4
 	rotateMat     mgl32.Mat4
 
-	blockTexture uint32
-	vao          uint32
+	playerTexture uint32
+	blockTexture  uint32
+
+	quadVAO uint32
 
 	blockTextureLayerIndex map[BlockType]int32
 }
@@ -127,15 +136,28 @@ func (renderer *GameRenderer) Init(width, height uint64, blockTypeDescriptors []
 	renderer.blockTextureLayerIndex = make(map[BlockType]int32)
 
 	program.UniformInt("tex", 0)
+	program.UniformInt("arrayTex", 1)
 
-	renderer.vao = makeVao(renderer.shaderProgram.program, quad)
+	renderer.quadVAO = makeVao(renderer.shaderProgram.program, quad)
 	blockTexture, err := renderer.loadBlockTextures(blockTypeDescriptors)
 	if err != nil {
 		panic(err)
 	}
 	renderer.blockTexture = blockTexture
-	gl.ActiveTexture(gl.TEXTURE0)
+	gl.ActiveTexture(gl.TEXTURE1)
 	gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.blockTexture)
+
+	playerTextureFile, err := os.Open("character.png")
+	if err != nil {
+		panic(err)
+	}
+	playerTexture, err := loadTexture(playerTextureFile)
+	if err != nil {
+		panic(err)
+	}
+	renderer.playerTexture = playerTexture
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.BindTexture(gl.TEXTURE_2D, renderer.playerTexture)
 }
 
 func (renderer *GameRenderer) RenderGame(dt time.Duration) {
@@ -157,12 +179,17 @@ func (renderer *GameRenderer) RenderGame(dt time.Duration) {
 	)
 	program.UniformMatrix4("projectionMat", renderer.projectionMat)
 	program.UniformMatrix4("cameraMat", renderer.cameraMat)
-	renderer.renderTerrain(renderer.Game.Terrain)
+	renderer.renderTerrain()
 	renderer.renderObjects()
+	renderer.renderPlayer()
 }
 
-func (renderer *GameRenderer) renderTerrain(terrain *Terrain) {
+func (renderer *GameRenderer) renderTerrain() {
+	terrain := renderer.Game.Terrain
 	program := renderer.shaderProgram
+
+	program.UniformInt("texMode", 1)
+
 	for _, chunk := range terrain.Chunks {
 		renderer.translateMat = mgl32.Translate3D(float32(chunk.X*16), float32(chunk.Y*16), 0)
 		renderer.rotateMat = mgl32.HomogRotate3DZ(0)
@@ -225,6 +252,21 @@ func (renderer *GameRenderer) renderObjects() {
 
 		entity.Draw()
 	}
+}
+
+func (renderer *GameRenderer) renderPlayer() {
+	program := renderer.shaderProgram
+	program.UniformInt("texMode", 0)
+
+	position := renderer.Game.Player.GetPosition()
+	renderer.translateMat = mgl32.Translate3D(float32(position.X), float32(position.Y), 0)
+	renderer.rotateMat = mgl32.HomogRotate3DZ(0)
+
+	program.UniformMatrix4("translateMat", renderer.translateMat)
+	program.UniformMatrix4("rotateMat", renderer.rotateMat)
+
+	gl.BindVertexArray(renderer.quadVAO)
+	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(quad)/6))
 }
 
 func NewShaderProgram(vertexShaderRaw, fragmentShaderRaw string) (*Shader, error) {
@@ -350,12 +392,8 @@ func (renderer *GameRenderer) loadBlockTextures(blockTypeDescriptors []*BlockTyp
 	return textureID, nil
 }
 
-func loadTexture(file string) (uint32, error) {
-	imgFile, err := os.Open(file)
-	if err != nil {
-		return 0, fmt.Errorf("texture %q not found on disk: %v", file, err)
-	}
-
+// Load single texture
+func loadTexture(imgFile *os.File) (uint32, error) {
 	img, _, err := image.Decode(imgFile)
 	if err != nil {
 		return 0, err

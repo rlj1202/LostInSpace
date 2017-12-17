@@ -19,8 +19,12 @@ type Coord struct {
 
 func (terrain *Terrain) GetBlock(x, y int64) *Block {
 	chunkCoord := Coord{x / CHUNK_WIDTH, y / CHUNK_HEIGHT}
+	chunk, exist := terrain.Chunks[chunkCoord]
+	if !exist {
+		return nil
+	}
 
-	return terrain.Chunks[chunkCoord].At(x&0xf, y&0xf)
+	return chunk.At(x&0xf, y&0xf)
 }
 
 func (terrain *Terrain) SetBlock(game *Game, block *Block) {
@@ -29,7 +33,10 @@ func (terrain *Terrain) SetBlock(game *Game, block *Block) {
 	blockX := int64(block.X) % CHUNK_WIDTH
 	blockY := int64(block.Y) % CHUNK_HEIGHT
 	chunkCoord := Coord{chunkX, chunkY}
-	chunk := terrain.Chunks[chunkCoord]
+	chunk, exist := terrain.Chunks[chunkCoord]
+	if !exist {
+		return
+	}
 	block.X = blockX
 	block.Y = blockY
 
