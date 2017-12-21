@@ -1,109 +1,53 @@
-package main
+package lostinspace
 
-import (
-	"encoding/gob"
-	"math/rand"
-	"os"
-)
-
-// Contains chunks which contain blocks.
+// Terrian is set of chunks.
 type Terrain struct {
-	Seed   int64
-	Chunks map[Coord]*Chunk
+	Chunks map[ChunkCoord]*Chunk
 }
 
-// Represent coordinates.
-type Coord struct {
-	X, Y int64
+func NewTerrain() *Terrain {
+	terrain := &Terrain{
+		Chunks: make(map[ChunkCoord]*Chunk),
+	}
+
+	return terrain
 }
 
-func (terrain *Terrain) GetBlock(x, y int64) *Block {
-	chunkCoord := Coord{x / CHUNK_WIDTH, y / CHUNK_HEIGHT}
+func (terrain *Terrain) SetChunk(chunk *Chunk) {
+	terrain.Chunks[chunk.ChunkCoord] = chunk
+}
+
+func (terrain *Terrain) GetChunk(coord ChunkCoord) *Chunk {
+	chunk := terrain.Chunks[coord]
+
+	return chunk
+}
+
+// Set block to given world coord.
+// Block coord which a block has will be ignored by world coord.
+func (terrain *Terrain) SetBlock(coord WorldCoord, block *Block) {
+	chunkCoord, blockCoord := coord.Parse()
+
+	chunk, exist := terrain.Chunks[chunkCoord]
+	if !exist {
+		// do something
+		return
+	}
+
+	block.BlockCoord = blockCoord
+
+	chunk.Set(block)
+}
+
+// Get block at given world coord.
+// It will return nil if there is no corresponding chunk.
+func (terrain *Terrain) At(coord WorldCoord) *Block {
+	chunkCoord, blockCoord := coord.Parse()
+
 	chunk, exist := terrain.Chunks[chunkCoord]
 	if !exist {
 		return nil
 	}
 
-	return chunk.At(x&0xf, y&0xf)
-}
-
-func (terrain *Terrain) SetBlock(game *Game, block *Block) {
-	chunkX := int64(block.X) / CHUNK_WIDTH
-	chunkY := int64(block.Y) / CHUNK_HEIGHT
-	blockX := int64(block.X) % CHUNK_WIDTH
-	blockY := int64(block.Y) % CHUNK_HEIGHT
-	chunkCoord := Coord{chunkX, chunkY}
-	chunk, exist := terrain.Chunks[chunkCoord]
-	if !exist {
-		return
-	}
-	block.X = blockX
-	block.Y = blockY
-
-	chunk.Set(block)
-	chunk.BlockContainerObject.Rebake(game)
-}
-
-func (terrain *Terrain) GenerateChunk(coord Coord) *Chunk {
-	random := rand.New(rand.NewSource(terrain.Seed))
-	perm := [256]int{}
-	copy(perm[:], random.Perm(256))
-	chunk := NewChunk()
-	chunk.X = coord.X
-	chunk.Y = coord.Y
-
-	for y := int64(0); y < CHUNK_HEIGHT; y++ {
-		for x := int64(0); x < CHUNK_WIDTH; x++ {
-			block := new(Block)
-			block.X = x
-			block.Y = y
-			block.BlockType = ""
-
-			blockX := float64(coord.X*CHUNK_WIDTH + x)
-			blockY := float64(coord.Y*CHUNK_HEIGHT + y)
-
-			noise := PerlinNoiseImproved(perm,
-				blockX/8.0,
-				blockY/8.0,
-				0)
-
-			if noise > 0.75 {
-				block.BlockType = "test1"
-			} else if noise > 0.7 {
-				block.BlockType = "test2"
-			} else if noise > 0.65 {
-				block.BlockType = "stone"
-			}
-
-			chunk.Set(block)
-		}
-	}
-
-	return chunk
-}
-
-func SaveTerrain(terrain *Terrain) {
-	file, err := os.Create("terrain.gob")
-	defer file.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	encoder := gob.NewEncoder(file)
-	encoder.Encode(terrain)
-}
-
-func LoadTerrain() (*Terrain, error) {
-	file, err := os.Open("terrain.gob")
-	defer file.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	terrain := new(Terrain)
-
-	decoder := gob.NewDecoder(file)
-	err = decoder.Decode(terrain)
-
-	return terrain, err
+	return chunk.At(blockCoord)
 }

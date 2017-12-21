@@ -1,39 +1,51 @@
-package main
+package lostinspace
 
-// Entity is movable object which is consist of blocks.
-type Entity struct {
-	blocks map[Coord]*Block
+type BlockEntity struct {
+	blocks map[BlockCoord]*Block
 
-	*BlockContainerObject
+	*Mesh
+	*Body
 }
 
-func (entity *Entity) Set(block *Block) {
-	coord := Coord{int64(block.X), int64(block.Y)}
-	entity.blocks[coord] = block
+func NewBlockEntity(world *World) *BlockEntity {
+	entity := new(BlockEntity)
+	entity.blocks = make(map[BlockCoord]*Block)
+	entity.Body = world.CreateBody(true)
+
+	return entity
 }
 
-func (entity *Entity) At(x, y int64) *Block {
-	return entity.blocks[Coord{x, y}]
+func (entity *BlockEntity) Set(block *Block) {
+	entity.blocks[block.BlockCoord] = block
 }
 
-func (entity *Entity) ForEach(f func(*Block)) {
-	for _, v := range entity.blocks {
-		f(v)
+func (entity *BlockEntity) At(coord BlockCoord) *Block {
+	return entity.blocks[coord]
+}
+
+func (entity *BlockEntity) ForEach(f func(*Block)) {
+	for _, block := range entity.blocks {
+		f(block)
 	}
 }
 
-func (entity *Entity) bake(game *Game) {
-	object := NewBlockContainerObject(game, entity, BLOCK_CONTAINER_DYNAMIC)
-	//object.body.SetTransform(box2d.MakeB2Vec2(
-	//	float64(0),
-	//	float64(0),
-	//), 0)
+func (entity *BlockEntity) Bake(world *World, dic *BlockTypeDictionary) {
+	positions, _, coords, indices := BakeBlockStorageMesh(entity, dic)
 
-	entity.BlockContainerObject = object
+	if entity.Mesh == nil {
+		entity.Mesh = NewMesh(positions, nil, coords, indices)
+	} else {
+		entity.Mesh.Set(positions, nil, coords, indices)
+	}
+
+	BakeBlockStorageBody(entity.Body, entity, dic)
 }
 
-func NewEntity() *Entity {
-	return &Entity{
-		blocks: make(map[Coord]*Block),
-	}
+func (entity *BlockEntity) Destroy() {
+	entity.blocks = nil
+
+	entity.Mesh.Destroy()
+	entity.Body.Destroy()
+	entity.Mesh = nil
+	entity.Body = nil
 }

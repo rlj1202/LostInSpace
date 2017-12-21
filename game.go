@@ -1,117 +1,285 @@
-package main
+package lostinspace
 
 import (
+	"log"
+	"os"
 	"time"
 
-	"github.com/ByteArena/box2d"
+	"github.com/go-gl/gl/v4.1-compatibility/gl"
+	"github.com/go-gl/glfw/v3.2/glfw"
+	"github.com/go-gl/mathgl/mgl32"
+)
+
+const (
+	vs = `
+		#version 410
+
+		uniform int translateMode;
+		
+		uniform mat4 translate;
+		uniform mat4 rotate;
+		uniform mat4 camera;
+		uniform mat4 projection;
+
+		layout(location = 0) in vec3 position;
+		layout(location = 1) in vec3 color;
+		layout(location = 2) in vec3 texCoord;
+
+		out vec3 fragColor;
+		out vec3 fragTexCoord;
+
+		void main() {
+			fragColor = color;
+
+			mat4 m = projection * camera * translate * rotate;
+			if (translateMode == 0) {
+				fragTexCoord = texCoord;
+				gl_Position = m * vec4(position, 1);
+			} else if (translateMode == 1) {
+				fragTexCoord = (m * vec4(texCoord, 1)).xyz;
+				gl_Position = vec4(position, 1);
+			}
+		}
+	`
+	fs = `
+		#version 410
+
+		uniform int texMode;
+
+		uniform sampler2D tex2D;
+		uniform sampler2DArray tex2DArray;
+
+		in vec3 fragColor;
+		in vec3 fragTexCoord;
+
+		out vec4 finalColor;
+
+		void main() {
+			vec4 diffuseColor = vec4(fragColor, 1);
+			vec4 texColor;
+			if (texMode == 0) {
+				texColor = texture(tex2D, fragTexCoord.xy);
+			} else if (texMode == 1) {
+				texColor = texture(tex2DArray, fragTexCoord);
+			}
+			//finalColor = mix(texColor, diffuseColor, 0.5);
+			finalColor = texColor;
+		}
+	`
 )
 
 type Game struct {
-	*World
-	*Camera
-	*Terrain
-	*Player
-	*GameRenderer
-	Entities             []*Entity
-	BlockTypeDescriptors map[BlockType]*BlockTypeDescriptor
+	window  *Window
+	world   *World
+	terrain *Terrain
+	dic     *BlockTypeDictionary
+	player  *Player
+	camera  *Camera
+
+	shader *ShaderProgram
+	entity *BlockEntity
+
+	bgTex Texture
+	quad  *Mesh
 }
 
-type World struct {
-	*box2d.B2World
-}
-
-type Camera struct {
-	// Deprecated
-	Velocity [2]float64
-	// Deprecated
-	Position [2]float64
-
-	Width  float64
-	Height float64
-	Zoom   float64
-
-	*box2d.B2Body
-}
-
-func (game *Game) Init(width, height uint64, descriptors []*BlockTypeDescriptor) {
-	game.World = new(World)
-	b2World := box2d.MakeB2World(box2d.MakeB2Vec2(0, 0))
-	game.World.B2World = &b2World
-
-	game.Player = NewPlayer(game)
-
-	game.Camera = &Camera{
-		Velocity: [2]float64{0, 0},
-		Position: [2]float64{0, 0},
-		Width:    0,
-		Height:   0,
-		Zoom:     1.0,
+func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
+	playerTexFile, err := os.Open("player.png")
+	if err != nil {
+		panic(err)
 	}
-	game.Camera.B2Body = game.Player.B2Body
+	playerTex := NewTexture2D(playerTexFile)
 
-	game.Terrain = new(Terrain)
-	game.Terrain.Chunks = make(map[Coord]*Chunk)
+	game := new(Game)
+	game.window = window
+	game.world = NewWorld()
+	game.terrain = NewTerrain()
+	game.dic = dic
+	game.dic.arrayTex.Bind(1)
+	game.player = NewPlayer(game.world, playerTex)
+	width, height := glfw.GetCurrentContext().GetSize()
+	game.camera = NewCamera(20, 20*float64(height)/float64(width))
+	game.camera.SetTarget(game.player.Body)
 
-	game.GameRenderer = new(GameRenderer)
-	game.GameRenderer.Game = game
-	game.GameRenderer.Init(width, height, descriptors)
+	seed := int64(2)
+	for y := int64(0); y < 16; y++ {
+		for x := int64(0); x < 16; x++ {
+			if x == 15 {
+				chunk := NewChunk()
+				for by := uint8(0); by < 16; by++ {
+					for bx := uint8(0); bx < 16; bx++ {
+						chunk.Set(NewBlock(BlockCoord{bx, by}, "stone"))
+					}
+				}
+				chunk.ChunkCoord = ChunkCoord{x, y}
+				chunk.Bake(game.world, dic)
+				game.terrain.SetChunk(chunk)
 
-	game.Entities = make([]*Entity, 0, 1)
-	game.BlockTypeDescriptors = make(map[BlockType]*BlockTypeDescriptor)
+				continue
+			}
 
-	for _, descriptor := range descriptors {
-		game.LoadBlockType(descriptor)
+			chunk := GenerateChunk(seed, ChunkCoord{x, y})
+			chunk.Bake(game.world, dic)
+			game.terrain.SetChunk(chunk)
+		}
 	}
 
-	entity := NewEntity()
-	entity.Set(&Block{
-		BlockType: "stone",
-		Coord: Coord{
-			X: 0,
-			Y: 0,
+	bgTexFile, err := os.Open("bg_space.png")
+	if err != nil {
+		panic(err)
+	}
+	game.bgTex = NewTexture2D(bgTexFile)
+	imageW, imageH := game.bgTex.GetSize()
+	frameW, frameH := glfw.GetCurrentContext().GetSize()
+	hu, hv := float32(frameW)/float32(imageW)/2.0, float32(frameH)/float32(imageH)/2.0
+	game.quad = NewMesh(
+		[]float32{
+			-1, 1, 0,
+			-1, -1, 0,
+			1, -1, 0,
+			1, 1, 0,
 		},
-		FrontFace: 0,
-	})
-	entity.Set(&Block{
-		BlockType: "stone",
-		Coord: Coord{
-			X: 1,
-			Y: -1,
+		nil,
+		[]float32{
+			-hu, -hv, 0,
+			-hu, hv, 0,
+			hu, hv, 0,
+			hu, -hv, 0,
 		},
-		FrontFace: 0,
-	})
-	entity.Set(&Block{
-		BlockType: "stone",
-		Coord: Coord{
-			X: 2,
-			Y: 0,
-		},
-	})
-	entity.bake(game)
-	entity.BlockContainerObject.body.SetTransform(box2d.MakeB2Vec2(5.0, 5.0), 0)
-	entity.BlockContainerObject.body.SetLinearVelocity(box2d.MakeB2Vec2(4.0, 3.0))
-	entity.BlockContainerObject.body.SetAngularVelocity(1.0)
-	game.Entities = append(game.Entities, entity)
+		[]uint16{0, 1, 2, 0, 2, 3},
+	)
+
+	game.shader = NewShaderProgram(vs, fs)
+	game.shader.UniformInt("tex2D", 0)
+	game.shader.UniformInt("tex2DArray", 1)
+	game.shader.UniformMat4("projection", game.camera.GetProjectionMat())
+	game.shader.UniformMat4("camera", mgl32.Ident4())
+	game.shader.UniformMat4("translate", mgl32.Ident4())
+	game.shader.UniformMat4("rotate", mgl32.Ident4())
+	game.shader.UniformMat4("texTranslate", mgl32.Ident4())
+	game.shader.Bind()
+
+	RegisterEventListener(game)
+
+	game.entity = NewBlockEntity(game.world)
+	game.entity.Set(NewBlock(BlockCoord{0, 0}, "stone"))
+	game.entity.Set(NewBlock(BlockCoord{1, 1}, "stone"))
+	game.entity.Set(NewBlock(BlockCoord{2, 0}, "stone"))
+	game.entity.Bake(game.world, dic)
+
+	return game
 }
 
 func (game *Game) Update(dt time.Duration) {
-	game.World.B2World.Step(dt.Seconds(), 8, 3)
+	PollEvents()
+
+	keyA := GetKeyActionState(KEY_A)
+	keyD := GetKeyActionState(KEY_D)
+	keyW := GetKeyActionState(KEY_W)
+	keyS := GetKeyActionState(KEY_S)
+	if keyA == ACTION_PRESS || keyA == ACTION_REPEAT {
+		game.player.ApplyForceToCenter(Vec2{-40, 0})
+	}
+	if keyD == ACTION_PRESS || keyD == ACTION_REPEAT {
+		game.player.ApplyForceToCenter(Vec2{40, 0})
+	}
+	if keyW == ACTION_PRESS || keyW == ACTION_REPEAT {
+		game.player.ApplyForceToCenter(Vec2{0, 40})
+	}
+	if keyS == ACTION_PRESS || keyS == ACTION_REPEAT {
+		game.player.ApplyForceToCenter(Vec2{0, -40})
+	}
+
+	game.world.Update(dt)
 }
 
 func (game *Game) Render() {
-	game.GameRenderer.RenderGame(0)
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+	game.shader.UniformMat4("rotate", mgl32.Ident4())
+
+	zoom := float32(game.camera.GetZoom())
+	game.shader.UniformMat4("projection", mgl32.Scale3D(1.0/zoom, 1.0/zoom, 1))
+	a, b := game.camera.target.GetPosition()
+	game.shader.UniformMat4("camera", mgl32.Translate3D(
+		float32(a)/100.0*zoom, float32(-b)/100.0*zoom, 0))
+	game.shader.UniformMat4("translate", mgl32.Ident4())
+	game.shader.UniformInt("texMode", 0)
+	game.shader.UniformInt("translateMode", 1)
+	game.bgTex.Bind(0)
+	game.quad.Draw()
+
+	game.shader.UniformMat4("projection", game.camera.GetProjectionMat())
+	game.shader.UniformInt("texMode", 0)
+	game.shader.UniformInt("translateMode", 0)
+	game.shader.UniformMat4("camera", game.camera.GetCameraMat())
+	game.player.Texture.Bind(0)
+	x, y := game.player.GetPosition()
+	game.shader.UniformMat4("translate", mgl32.Translate3D(
+		float32(x), float32(y), 0))
+	game.player.Mesh.Draw()
+
+	game.shader.UniformInt("texMode", 1)
+	for _, chunk := range game.terrain.Chunks {
+		game.shader.UniformMat4("translate",
+			mgl32.Translate3D(float32(chunk.X*CHUNK_WIDTH), float32(chunk.Y*CHUNK_HEIGHT), 0))
+		chunk.Mesh.Draw()
+	}
+	x, y = game.entity.Body.GetPosition()
+	angle := game.entity.Body.GetAngle()
+	game.shader.UniformMat4("translate", mgl32.Translate3D(
+		float32(x), float32(y), 0))
+	game.shader.UniformMat4("rotate", mgl32.HomogRotate3DZ(float32(angle)))
+	game.entity.Mesh.Draw()
 }
 
-func (game *Game) LoadBlockType(descriptor *BlockTypeDescriptor) {
-	game.BlockTypeDescriptors[descriptor.BlockType] = descriptor
-}
+func (game Game) OnEvent(event Event) {
+	switch event.(type) {
+	case MouseEvent:
+		mouseEvent := event.(MouseEvent)
+		action := mouseEvent.Action
+		if action != ACTION_PRESS {
+			break
+		}
+		button := mouseEvent.Button
+		xpos := float32(mouseEvent.XPos)
+		ypos := float32(mouseEvent.YPos)
 
-func (game *Game) LoadChunk(chunk *Chunk) {
-	coord := chunk.Coord
-	game.Terrain.Chunks[coord] = chunk
+		width, height := game.window.GetSize()
+		worldPos, err := mgl32.UnProject(
+			mgl32.Vec3{xpos, float32(height) - ypos, 0},
+			game.camera.GetCameraMat(),
+			game.camera.GetProjectionMat(),
+			0, 0,
+			width, height,
+		)
+		if err == nil {
+			worldCoord := WorldCoord{
+				int64(worldPos.X() + 0.5), int64(worldPos.Y() + 0.5)}
+			chunkCoord, blockCoord := worldCoord.Parse()
+			chunk := game.terrain.GetChunk(chunkCoord)
+			if chunk == nil {
+				break
+			}
+			block := chunk.At(blockCoord)
 
-	chunk.bake(game)
-}
+			log.Printf("BlockType: %v\n", block.BlockType)
 
-func (game *Game) UnloadChunk(coord Coord) {
+			if button == MOUSE_BUTTON_LEFT {
+				chunk.Set(NewBlock(blockCoord, ""))
+				chunk.Bake(game.world, game.dic)
+			} else if button == MOUSE_BUTTON_RIGHT {
+				chunk.Set(NewBlock(blockCoord, "stone"))
+				chunk.Bake(game.world, game.dic)
+			}
+		}
+	case ScrollEvent:
+		scrollEvent := event.(ScrollEvent)
+		yoff := scrollEvent.YOff
+
+		camera := game.camera
+		camera.SetZoom(camera.GetZoom() + yoff/20.0)
+
+		log.Println("yea %v\n", yoff)
+	}
 }

@@ -1,70 +1,76 @@
-package main
+package lostinspace
 
-import (
-	"github.com/ByteArena/box2d"
-)
-
-const (
-	CHUNK_WIDTH  = 16
-	CHUNK_HEIGHT = 16
-)
-
-// Chunk contains 16 * 16 blocks to control terrain easily.
 type Chunk struct {
-	Coord
+	ChunkCoord
+	Blocks [CHUNK_WIDTH * CHUNK_HEIGHT]*Block
 
-	Blocks []*Block
-	Width  int
-	Height int
-
-	*BlockContainerObject
+	*Mesh
+	*Body
 }
 
 func NewChunk() *Chunk {
-	return &Chunk{
-		Blocks: make([]*Block, CHUNK_WIDTH*CHUNK_HEIGHT),
-		Width:  CHUNK_WIDTH,
-		Height: CHUNK_HEIGHT,
+	chunk := &Chunk{}
+	for y := 0; y < CHUNK_HEIGHT; y++ {
+		for x := 0; x < CHUNK_WIDTH; x++ {
+			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID))
+		}
 	}
+
+	return chunk
 }
 
-// Set block at given coordinate.
-// block's coordinates have to be in 0 ~ 15
 func (chunk *Chunk) Set(block *Block) {
-	x := block.X
-	y := block.Y
-	if x < 0 || CHUNK_WIDTH <= x || y < 0 || CHUNK_HEIGHT <= y {
-		// panic
+	if !validBlockCoord(block.BlockCoord) {
+		// TODO panic
 		return
 	}
-	if chunk == nil {
-		return
-	}
-	chunk.Blocks[x+y*CHUNK_WIDTH] = block
+
+	chunk.Blocks[blockIndex(block.BlockCoord)] = block
 }
 
-// Get block at given coordinate.
-func (chunk *Chunk) At(x, y int64) *Block {
-	if x < 0 || CHUNK_WIDTH <= x || y < 0 || CHUNK_HEIGHT <= y {
-		// panic
+func (chunk *Chunk) At(coord BlockCoord) *Block {
+	if !validBlockCoord(coord) {
+		// TODO panic
 		return nil
 	}
-	return chunk.Blocks[x+y*CHUNK_WIDTH]
+
+	return chunk.Blocks[blockIndex(coord)]
 }
 
 func (chunk *Chunk) ForEach(f func(*Block)) {
-	for _, v := range chunk.Blocks {
-		f(v)
+	for _, block := range chunk.Blocks {
+		f(block)
 	}
 }
 
-// Generate initial block meshs and physics box
-func (chunk *Chunk) bake(game *Game) {
-	object := NewBlockContainerObject(game, chunk, BLOCK_CONTAINER_STATIC)
-	object.body.SetTransform(box2d.MakeB2Vec2(
-		float64(chunk.Coord.X*CHUNK_WIDTH),
-		float64(chunk.Coord.Y*CHUNK_HEIGHT),
-	), 0)
+func (chunk *Chunk) Bake(world *World, dic *BlockTypeDictionary) {
+	positions, _, coords, indices := BakeBlockStorageMesh(chunk, dic)
 
-	chunk.BlockContainerObject = object
+	if chunk.Mesh == nil {
+		chunk.Mesh = NewMesh(positions, nil, coords, indices)
+	} else {
+		chunk.Mesh.Set(positions, nil, coords, indices)
+	}
+
+	if chunk.Body == nil {
+		chunk.Body = world.CreateBody(false)
+		chunk.Body.SetPosition(
+			float64(chunk.X*CHUNK_WIDTH), float64(chunk.Y*CHUNK_HEIGHT))
+	}
+	BakeBlockStorageBody(chunk.Body, chunk, dic)
+}
+
+func (chunk *Chunk) Destroy() {
+	chunk.Mesh.Destroy()
+	chunk.Body.Destroy()
+	chunk.Mesh = nil
+	chunk.Body = nil
+}
+
+func blockIndex(coord BlockCoord) int {
+	return int(coord.X + coord.Y*CHUNK_WIDTH)
+}
+
+func validBlockCoord(coord BlockCoord) bool {
+	return 0 <= coord.X && coord.X < CHUNK_WIDTH && 0 <= coord.Y && coord.Y < CHUNK_HEIGHT
 }
