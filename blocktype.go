@@ -1,6 +1,9 @@
 package lostinspace
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // An block type to represents empty space. or void, whatever.
 const BLOCK_TYPE_VOID BlockType = ""
@@ -52,4 +55,17 @@ func NewBlockTypeDictionary(descriptors []*BlockTypeDescriptor) *BlockTypeDictio
 // Get descriptor of given block type.
 func (dic *BlockTypeDictionary) Get(blockType BlockType) *BlockTypeDescriptor {
 	return dic.data[blockType]
+}
+
+func (desc *BlockTypeDescriptor) String() string {
+	return fmt.Sprintf(
+		`BlockTypeDescriptor{
+			BlockType: "%s",
+			Name: "%s",
+			Density: %f,
+			Friction: %f,
+			Restitution: %f,
+		}`,
+		desc.BlockType, desc.Name, desc.Density, desc.Friction, desc.Restitution,
+	)
 }

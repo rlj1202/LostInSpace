@@ -15,6 +15,21 @@ type Vec4 struct {
 }
 type Mat4 [16]float64
 
+// Axis-Aligned Bounding Box
+type AABB struct {
+	Center          Vec2
+	HWidth, HHeight float64
+}
+
+func (a *AABB) Collide(b *AABB) bool {
+	if math.Abs(a.Center.X-b.Center.X) < a.HWidth+b.HWidth &&
+		math.Abs(a.Center.Y-b.Center.Y) < a.HHeight+b.HHeight {
+		return true
+	}
+
+	return false
+}
+
 func Distance(a, b *Vec2) float64 {
 	return math.Sqrt(math.Pow(a.X-b.X, 2) + math.Pow(a.Y-b.Y, 2))
 }
@@ -55,9 +70,9 @@ func CrossProduct(a, b *Vec2) float64 {
 func PerlinNoiseImproved(perm [256]int, x, y, z float64) float64 {
 	p := append(perm[:], perm[:]...)
 
-	xi := int(x) & 0xff // Coordinate is repeated
-	yi := int(y) & 0xff
-	zi := int(z) & 0xff
+	xi := int(math.Floor(x)) & 0xff // Coordinate is repeated (0 ~ 255)
+	yi := int(math.Floor(y)) & 0xff
+	zi := int(math.Floor(z)) & 0xff
 
 	xf := x - math.Floor(x)
 	yf := y - math.Floor(y)

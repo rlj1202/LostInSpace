@@ -1,15 +1,19 @@
 package lostinspace
 
 type Chunk struct {
-	ChunkCoord
 	Blocks [CHUNK_WIDTH * CHUNK_HEIGHT]*Block
 
-	*Mesh
-	*Body
+	coord ChunkCoord
+
+	mesh *Mesh
+	body *Body
+
+	aabb *AABB
 }
 
-func NewChunk() *Chunk {
-	chunk := &Chunk{}
+func NewChunk(coord ChunkCoord) *Chunk {
+	chunk := new(Chunk)
+	chunk.coord = coord
 	for y := 0; y < CHUNK_HEIGHT; y++ {
 		for x := 0; x < CHUNK_WIDTH; x++ {
 			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID))
@@ -20,17 +24,15 @@ func NewChunk() *Chunk {
 }
 
 func (chunk *Chunk) Set(block *Block) {
-	if !validBlockCoord(block.BlockCoord) {
-		// TODO panic
+	if !block.coord.Valid() {
 		return
 	}
 
-	chunk.Blocks[blockIndex(block.BlockCoord)] = block
+	chunk.Blocks[blockIndex(block.coord)] = block
 }
 
 func (chunk *Chunk) At(coord BlockCoord) *Block {
-	if !validBlockCoord(coord) {
-		// TODO panic
+	if !coord.Valid() {
 		return nil
 	}
 
@@ -43,34 +45,26 @@ func (chunk *Chunk) ForEach(f func(*Block)) {
 	}
 }
 
-func (chunk *Chunk) Bake(world *World, dic *BlockTypeDictionary) {
-	positions, _, coords, indices := BakeBlockStorageMesh(chunk, dic)
-
-	if chunk.Mesh == nil {
-		chunk.Mesh = NewMesh(positions, nil, coords, indices)
-	} else {
-		chunk.Mesh.Set(positions, nil, coords, indices)
-	}
-
-	if chunk.Body == nil {
-		chunk.Body = world.CreateBody(false)
-		chunk.Body.SetPosition(
-			float64(chunk.X*CHUNK_WIDTH), float64(chunk.Y*CHUNK_HEIGHT))
-	}
-	BakeBlockStorageBody(chunk.Body, chunk, dic)
+func (chunk *Chunk) Destroy() {
+	chunk.mesh.Destroy()
+	chunk.body.Destroy()
+	chunk.mesh = nil
+	chunk.body = nil
 }
 
-func (chunk *Chunk) Destroy() {
-	chunk.Mesh.Destroy()
-	chunk.Body.Destroy()
-	chunk.Mesh = nil
-	chunk.Body = nil
+func (chunk *Chunk) GetAABB() *AABB {
+	if chunk.aabb == nil {
+		x, y := float64(chunk.coord.X*16+8), float64(chunk.coord.Y*16+8)
+		chunk.aabb = &AABB{
+			Center:  Vec2{x, y},
+			HWidth:  8,
+			HHeight: 8,
+		}
+	}
+
+	return chunk.aabb
 }
 
 func blockIndex(coord BlockCoord) int {
 	return int(coord.X + coord.Y*CHUNK_WIDTH)
-}
-
-func validBlockCoord(coord BlockCoord) bool {
-	return 0 <= coord.X && coord.X < CHUNK_WIDTH && 0 <= coord.Y && coord.Y < CHUNK_HEIGHT
 }

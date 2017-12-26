@@ -29,8 +29,8 @@ func BakeBlockStorageMesh(storage BlockStorage, dic *BlockTypeDictionary) ([]flo
 				0, 0, 0,
 			)
 		} else {
-			x := float32(block.BlockCoord.X)
-			y := float32(block.BlockCoord.Y)
+			x := float32(block.coord.X)
+			y := float32(block.coord.Y)
 			descriptor := dic.Get(block.BlockType)
 			layer := float32(0)
 			if descriptor != nil {
@@ -81,8 +81,8 @@ func BakeBlockStorageBody(body *Body, storage BlockStorage, dic *BlockTypeDictio
 		vertices := make([]Vec2, len(des.CollisionVertices))
 		for i, vertex := range des.CollisionVertices {
 			vertices[i] = Vec2{
-				vertex.X + float64(block.X),
-				vertex.Y + float64(block.Y)}
+				vertex.X + float64(block.coord.X),
+				vertex.Y + float64(block.coord.Y)}
 		}
 
 		body.CreatePolygonFixture(des.Density, des.Friction, des.Restitution, vertices)

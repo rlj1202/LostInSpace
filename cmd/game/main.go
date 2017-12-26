@@ -46,6 +46,7 @@ func main() {
 
 		window.Update()
 	}
+	game.Destroy()
 }
 
 func blockTypeDic() *lostinspace.BlockTypeDictionary {

@@ -12,6 +12,9 @@ type Camera struct {
 	hwidth  float64
 	hheight float64
 
+	hZoomWidth  float64
+	hZoomHeight float64
+
 	target *Body
 
 	projectionMat mgl32.Mat4
@@ -60,8 +63,23 @@ func (camera *Camera) SetZoom(zoom float64) {
 	camera.createProjectionMat()
 }
 
+func (camera *Camera) GetAABB() *AABB {
+	if camera.target == nil {
+		return nil
+	}
+	x, y := camera.target.GetPosition()
+
+	return &AABB{
+		Center:  Vec2{x, y},
+		HWidth:  camera.hZoomWidth,
+		HHeight: camera.hZoomHeight,
+	}
+}
+
 func (camera *Camera) createProjectionMat() {
-	hw := float32(camera.hwidth / camera.zoom)
-	hh := float32(camera.hheight / camera.zoom)
+	camera.hZoomWidth = camera.hwidth / camera.zoom
+	camera.hZoomHeight = camera.hheight / camera.zoom
+	hw := float32(camera.hZoomWidth)
+	hh := float32(camera.hZoomHeight)
 	camera.projectionMat = mgl32.Ortho2D(-hw, hw, -hh, hh)
 }

@@ -16,7 +16,7 @@ func NewBlockEntity(world *World) *BlockEntity {
 }
 
 func (entity *BlockEntity) Set(block *Block) {
-	entity.blocks[block.BlockCoord] = block
+	entity.blocks[block.coord] = block
 }
 
 func (entity *BlockEntity) At(coord BlockCoord) *Block {
