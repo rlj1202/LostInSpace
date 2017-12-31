@@ -50,10 +50,8 @@ func NewWindow(width, height int, title string, resizable bool) *Window {
 	gl.ClearColor(0, 0, 0.1, 1)
 	gl.Enable(gl.BLEND)
 	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-	gl.Enable(gl.POLYGON_SMOOTH)
 	gl.Enable(gl.LINE_SMOOTH)
 	gl.Enable(gl.MULTISAMPLE)
-	gl.Hint(gl.POLYGON_SMOOTH_HINT, gl.NICEST)
 	gl.Hint(gl.LINE_SMOOTH_HINT, gl.NICEST)
 
 	newWindow := &Window{

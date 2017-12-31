@@ -93,6 +93,9 @@ type Game struct {
 	shader *ShaderProgram
 	entity *BlockEntity
 
+	msaaTex uint32
+	msaaFbo uint32
+
 	bgTex   Texture
 	quad    *Mesh
 	bgRatio float32
@@ -227,6 +230,14 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 		}
 	}()
 
+	gl.GenTextures(1, &game.msaaTex)
+	gl.BindTexture(gl.TEXTURE_2D_MULTISAMPLE, game.msaaTex)
+	gl.TexImage2DMultisample(gl.TEXTURE_2D_MULTISAMPLE, 4, gl.RGBA8, int32(width), int32(height), false)
+
+	gl.GenFramebuffers(1, &game.msaaFbo)
+	gl.BindFramebuffer(gl.FRAMEBUFFER, game.msaaFbo)
+	gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D_MULTISAMPLE, game.msaaTex, 0)
+
 	bgTexFile, err := os.Open("bg_starfield.png")
 	if err != nil {
 		panic(err)
@@ -323,6 +334,9 @@ func (game *Game) Destroy() {
 func (game *Game) Render() {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
+	// render to the fbo for multisampling
+	gl.BindFramebuffer(gl.FRAMEBUFFER, game.msaaFbo)
+
 	game.shader.UniformMat4("rotate", mgl32.Ident4())
 
 	// render background
@@ -350,6 +364,18 @@ func (game *Game) Render() {
 	))
 	game.shader.UniformMat4("rotate", mgl32.HomogRotate3DZ(float32(angle)))
 	game.entity.Mesh.Draw()
+
+	// completed rendering
+	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+
+	// resolve result to screen
+	gl.BindFramebuffer(gl.READ_FRAMEBUFFER, game.msaaFbo)
+	gl.BindFramebuffer(gl.DRAW_FRAMEBUFFER, 0)
+	width, height := glfw.GetCurrentContext().GetSize()
+	gl.BlitFramebuffer(
+		0, 0, int32(width), int32(height),
+		0, 0, int32(width), int32(height), gl.COLOR_BUFFER_BIT, gl.NEAREST)
+	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 }
 
 func (game *Game) renderPlayer() {
