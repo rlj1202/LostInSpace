@@ -13,6 +13,11 @@ const (
 // (r, g, b, r, g, b, ...)  color
 // (u, v, l, u, v, l, ...)  texture coordinate
 type Mesh struct {
+	Positions []float32
+	Colors    []float32
+	TexCoords []float32
+	Indices   []uint16
+
 	elementsCount int32
 
 	ibo uint32
@@ -23,16 +28,40 @@ type Mesh struct {
 	texCoordBuffer uint32
 }
 
+// This doesn't create opengl buffer objects.
+// You must call Bake() function to create opengl objects.
 func NewMesh(positions, colors, texCoords []float32, indices []uint16) *Mesh {
-	mesh := &Mesh{}
+	mesh := &Mesh{
+		Positions: positions,
+		Colors:    colors,
+		TexCoords: texCoords,
+		Indices:   indices,
+	}
 
-	gl.GenVertexArrays(1, &mesh.vao)
+	return mesh
+}
+
+func (mesh *Mesh) Draw() {
+	gl.BindVertexArray(mesh.vao)
+	gl.DrawElements(gl.TRIANGLES, mesh.elementsCount, gl.UNSIGNED_SHORT, gl.PtrOffset(0))
+}
+
+func (mesh *Mesh) Bake() {
+	if mesh.vao == 0 { // uninitialized
+		gl.GenVertexArrays(1, &mesh.vao)
+		gl.BindVertexArray(mesh.vao)
+
+		gl.GenBuffers(1, &mesh.positionBuffer)
+		gl.GenBuffers(1, &mesh.colorBuffer)
+		gl.GenBuffers(1, &mesh.texCoordBuffer)
+		gl.GenBuffers(1, &mesh.ibo)
+	}
+
 	gl.BindVertexArray(mesh.vao)
 
-	if positions != nil {
-		gl.GenBuffers(1, &mesh.positionBuffer)
+	if mesh.Positions != nil {
 		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.positionBuffer)
-		gl.BufferData(gl.ARRAY_BUFFER, len(positions)*4, gl.Ptr(positions), gl.DYNAMIC_DRAW)
+		gl.BufferData(gl.ARRAY_BUFFER, len(mesh.Positions)*4, gl.Ptr(mesh.Positions), gl.DYNAMIC_DRAW)
 
 		gl.EnableVertexAttribArray(ATTRIB_POSITION)
 		gl.VertexAttribPointer(ATTRIB_POSITION, 3, gl.FLOAT, false, 3*4, gl.PtrOffset(0))
@@ -40,10 +69,9 @@ func NewMesh(positions, colors, texCoords []float32, indices []uint16) *Mesh {
 		gl.DisableVertexAttribArray(ATTRIB_POSITION)
 	}
 
-	if colors != nil {
-		gl.GenBuffers(1, &mesh.colorBuffer)
+	if mesh.Colors != nil {
 		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.colorBuffer)
-		gl.BufferData(gl.ARRAY_BUFFER, len(colors)*4, gl.Ptr(colors), gl.DYNAMIC_DRAW)
+		gl.BufferData(gl.ARRAY_BUFFER, len(mesh.Colors)*4, gl.Ptr(mesh.Colors), gl.DYNAMIC_DRAW)
 
 		gl.EnableVertexAttribArray(ATTRIB_COLOR)
 		gl.VertexAttribPointer(ATTRIB_COLOR, 3, gl.FLOAT, false, 3*4, gl.PtrOffset(0))
@@ -51,10 +79,9 @@ func NewMesh(positions, colors, texCoords []float32, indices []uint16) *Mesh {
 		gl.DisableVertexAttribArray(ATTRIB_COLOR)
 	}
 
-	if texCoords != nil {
-		gl.GenBuffers(1, &mesh.texCoordBuffer)
+	if mesh.TexCoords != nil {
 		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.texCoordBuffer)
-		gl.BufferData(gl.ARRAY_BUFFER, len(texCoords)*4, gl.Ptr(texCoords), gl.DYNAMIC_DRAW)
+		gl.BufferData(gl.ARRAY_BUFFER, len(mesh.TexCoords)*4, gl.Ptr(mesh.TexCoords), gl.DYNAMIC_DRAW)
 
 		gl.EnableVertexAttribArray(ATTRIB_TEX_COORD)
 		gl.VertexAttribPointer(ATTRIB_TEX_COORD, 3, gl.FLOAT, false, 3*4, gl.PtrOffset(0))
@@ -62,25 +89,14 @@ func NewMesh(positions, colors, texCoords []float32, indices []uint16) *Mesh {
 		gl.DisableVertexAttribArray(ATTRIB_TEX_COORD)
 	}
 
-	gl.GenBuffers(1, &mesh.ibo)
 	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo)
-	gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(indices)*2, gl.Ptr(indices), gl.DYNAMIC_DRAW)
-	mesh.elementsCount = int32(len(indices))
-
-	return mesh
+	gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(mesh.Indices)*2, gl.Ptr(mesh.Indices), gl.DYNAMIC_DRAW)
+	mesh.elementsCount = int32(len(mesh.Indices))
 }
 
-func (mesh *Mesh) Bind() {
-	gl.BindVertexArray(mesh.vao)
-}
-
-func (mesh *Mesh) Draw() {
-	mesh.Bind()
-	gl.DrawElements(gl.TRIANGLES, mesh.elementsCount, gl.UNSIGNED_SHORT, gl.PtrOffset(0))
-}
-
+// TODO Deprecated
 func (mesh *Mesh) Set(positions, colors, texCoords []float32, indices []uint16) {
-	mesh.Bind()
+	gl.BindVertexArray(mesh.vao)
 	if positions != nil {
 		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.positionBuffer)
 		gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(positions)*4, gl.Ptr(positions))

@@ -138,3 +138,19 @@ func (coord ChunkCoord) Valid() bool {
 func (coord BlockCoord) Valid() bool {
 	return 0 <= coord.X && coord.X < CHUNK_WIDTH && 0 <= coord.Y && coord.Y < CHUNK_HEIGHT
 }
+
+func (coord WorldSectorCoord) Left() WorldSectorCoord {
+	return WorldSectorCoord{coord.X - 1, coord.Y}
+}
+
+func (coord WorldSectorCoord) Right() WorldSectorCoord {
+	return WorldSectorCoord{coord.X + 1, coord.Y}
+}
+
+func (coord WorldSectorCoord) Up() WorldSectorCoord {
+	return WorldSectorCoord{coord.X, coord.Y + 1}
+}
+
+func (coord WorldSectorCoord) Down() WorldSectorCoord {
+	return WorldSectorCoord{coord.X, coord.Y - 1}
+}

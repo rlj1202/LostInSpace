@@ -87,13 +87,7 @@ func (terrain *Terrain) BakeChunk(world *World, dic *BlockTypeDictionary, coord 
 		return
 	}
 
-	positions, _, coords, indices := BakeBlockStorageMesh(chunk, dic)
-
-	if chunk.mesh == nil {
-		chunk.mesh = NewMesh(positions, nil, coords, indices)
-	} else {
-		chunk.mesh.Set(positions, nil, coords, indices)
-	}
+	BakeBlockStorageMesh(chunk.mesh, chunk, dic)
 
 	if chunk.body == nil {
 		chunk.body = world.CreateBody(false)

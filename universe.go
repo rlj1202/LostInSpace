@@ -1,6 +1,8 @@
 package lostinspace
 
 import (
+	"encoding/gob"
+	"fmt"
 	"os"
 )
 
@@ -78,4 +80,34 @@ func (universe *Universe) Save() {
 
 // Load all informations from dir.
 func (universe *Universe) Load() {
+}
+
+func sectorFileName(coord WorldSectorCoord) string {
+	return fmt.Sprintf("sector_%d_%d.gob", coord.X, coord.Y)
+}
+
+func LoadSector(coord WorldSectorCoord) *Sector {
+	file, err := os.Open(sectorFileName(coord))
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	sector := NewSector(coord)
+
+	dec := gob.NewDecoder(file)
+	dec.Decode(sector)
+
+	return sector
+}
+
+func SaveSector(sector *Sector) {
+	file, err := os.Create(sectorFileName(sector.coord))
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	enc := gob.NewEncoder(file)
+	enc.Encode(sector)
 }

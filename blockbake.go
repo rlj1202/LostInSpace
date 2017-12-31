@@ -1,7 +1,7 @@
 package lostinspace
 
 // return (positions, nil, coords, indices)
-func BakeBlockStorageMesh(storage BlockStorage, dic *BlockTypeDictionary) ([]float32, []float32, []float32, []uint16) {
+func BakeBlockStorageMesh(mesh *Mesh, storage BlockStorage, dic *BlockTypeDictionary) {
 	positions := make([]float32, 0)
 	//colors := make([]float32, 0)
 	coords := make([]float32, 0)
@@ -65,12 +65,13 @@ func BakeBlockStorageMesh(storage BlockStorage, dic *BlockTypeDictionary) ([]flo
 		indexOffset += 4
 	})
 
-	return positions, nil, coords, indices
+	mesh.Positions = positions
+	mesh.Colors = nil
+	mesh.TexCoords = coords
+	mesh.Indices = indices
 }
 
 func BakeBlockStorageBody(body *Body, storage BlockStorage, dic *BlockTypeDictionary) {
-	body.Clear()
-
 	storage.ForEach(func(block *Block) {
 		if block.BlockType == "" {
 			return
@@ -85,6 +86,6 @@ func BakeBlockStorageBody(body *Body, storage BlockStorage, dic *BlockTypeDictio
 				vertex.Y + float64(block.coord.Y)}
 		}
 
-		body.CreatePolygonFixture(des.Density, des.Friction, des.Restitution, vertices)
+		body.AddPolygonFixture(des.Density, des.Friction, des.Restitution, vertices)
 	})
 }

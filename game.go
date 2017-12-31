@@ -77,9 +77,18 @@ type Game struct {
 	player  *Player
 	camera  *Camera
 
+	seed *Seed
+
+	loadSectorQueue chan WorldSectorCoord
+	bakeSectorQueue chan WorldSectorCoord
+
 	chunksToDraw map[WorldChunkCoord]*Chunk
 	chunksRadius int
 	quit         chan bool
+
+	// maximum number of loaded sectors
+	maxSectors    int
+	sectorsToLoad []WorldSectorCoord
 
 	shader *ShaderProgram
 	entity *BlockEntity
@@ -109,26 +118,20 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 	game.dic = dic
 	game.dic.arrayTex.Bind(1)
 	game.player = NewPlayer(game.world, playerTex)
+	game.player.Mesh.Bake()
 	width, height := glfw.GetCurrentContext().GetSize()
 	game.camera = NewCamera(20, 20*float64(height)/float64(width))
 	game.camera.SetTarget(game.player.Body)
 
+	game.loadSectorQueue = make(chan WorldSectorCoord, 9)
+	game.bakeSectorQueue = make(chan WorldSectorCoord, 9)
+
 	seed := NewSeed(2)
-	game.loadSector(seed, WorldSectorCoord{0, 0})
-	game.loadSector(seed, WorldSectorCoord{-1, 0})
-	game.loadSector(seed, WorldSectorCoord{0, -1})
-	game.loadSector(seed, WorldSectorCoord{-1, -1})
-	/*
-		game.terrain.SetSector(NewSector(WorldSectorCoord{-1, 0}))
-		game.terrain.SetSector(NewSector(WorldSectorCoord{0, 0}))
-		game.terrain.SetSector(NewSector(WorldSectorCoord{-1, -1}))
-		game.terrain.SetSector(NewSector(WorldSectorCoord{0, -1}))
-		for y := int64(-5); y < 16; y++ {
-			for x := int64(-5); x < 16; x++ {
-				game.loadChunk(WorldChunkCoord{x, y})
-			}
-		}
-	*/
+	game.seed = seed
+	game.loadSectorQueue <- WorldSectorCoord{0, 0}
+	game.loadSectorQueue <- WorldSectorCoord{-1, 0}
+	game.loadSectorQueue <- WorldSectorCoord{0, -1}
+	game.loadSectorQueue <- WorldSectorCoord{-1, -1}
 
 	game.quit = make(chan bool)
 	game.chunksRadius = 9
@@ -138,7 +141,6 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 			case <-game.quit:
 				return
 			default:
-				time.Sleep(time.Second * 2)
 				posX, posY := game.camera.target.GetPosition()
 				radius := game.chunksRadius
 
@@ -157,6 +159,70 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 					}
 				}
 				game.chunksToDraw = chunks
+
+				time.Sleep(time.Second * 2)
+			}
+		}
+	}()
+	game.maxSectors = 9
+	go func() {
+		var curSector, prevSector WorldSectorCoord
+
+		for {
+			select {
+			case <-game.quit:
+				return
+			default:
+				x, y := game.player.GetPosition()
+				worldBlockCoord := WorldBlockCoord{int64(math.Floor(x)), int64(math.Floor(y))}
+				curSector, _, _ = worldBlockCoord.Parse()
+
+				if curSector != prevSector {
+					game.loadSectorQueue <- curSector
+					game.loadSectorQueue <- curSector.Left()
+					game.loadSectorQueue <- curSector.Left().Up()
+					game.loadSectorQueue <- curSector.Left().Down()
+					game.loadSectorQueue <- curSector.Right()
+					game.loadSectorQueue <- curSector.Right().Up()
+					game.loadSectorQueue <- curSector.Right().Down()
+					game.loadSectorQueue <- curSector.Up()
+					game.loadSectorQueue <- curSector.Down()
+
+					prevSector = curSector
+				}
+
+				time.Sleep(time.Second * 2)
+			}
+		}
+	}()
+
+	go func() { // sector loader: generate sector or load from file.
+		for {
+			select {
+			case <-game.quit:
+				return
+			case coord := <-game.loadSectorQueue:
+				sector := game.terrain.GetSector(coord)
+				if sector != nil {
+					continue
+				}
+
+				// Load sector from file.
+				sector = LoadSector(coord)
+				if sector == nil {
+					// Generate sector if there is no file.
+					sector = GenerateSector(game.seed, coord)
+				}
+
+				game.terrain.SetSector(sector)
+
+				for _, chunk := range sector.Chunks {
+					worldChunkCoord := CombineWorldChunkCoord(coord, chunk.coord)
+
+					game.terrain.BakeChunk(game.world, game.dic, worldChunkCoord)
+				}
+
+				game.bakeSectorQueue <- coord
 			}
 		}
 	}()
@@ -188,6 +254,7 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 		},
 		[]uint16{0, 1, 2, 0, 2, 3},
 	)
+	game.quad.Bake()
 
 	game.shader = NewShaderProgram(vs, fs)
 	game.shader.UniformInt("tex2D", 0)
@@ -230,11 +297,27 @@ func (game *Game) Update(dt time.Duration) {
 		game.player.ApplyForceToCenter(Vec2{0, -40})
 	}
 
+	select {
+	case coord := <-game.bakeSectorQueue:
+		sector := game.terrain.GetSector(coord)
+
+		start := time.Now()
+		for _, chunk := range sector.Chunks {
+			chunk.mesh.Bake()
+			chunk.body.Bake()
+		}
+		elapsed := time.Since(start)
+
+		log.Printf("Bake sector: %v, %v seconds\n", coord, elapsed.Seconds())
+	default:
+		break
+	}
+
 	game.world.Update(dt)
 }
 
 func (game *Game) Destroy() {
-	game.quit <- true
+	close(game.quit)
 }
 
 func (game *Game) Render() {
@@ -283,7 +366,7 @@ func (game *Game) renderPlayer() {
 func (game *Game) renderChunks() {
 	game.shader.UniformInt("texMode", 1)
 	for worldChunkCoord, chunk := range game.chunksToDraw {
-		game.shader.UniformMat4("translate", mgl32.Translate3D(
+		game.shader.UniformMat4("translate", mgl32.Translate3D( // TODO 이 행렬을 캐쉬해두면 속도가 빨라질듯
 			float32(worldChunkCoord.X*CHUNK_WIDTH),
 			float32(worldChunkCoord.Y*CHUNK_HEIGHT),
 			0,
@@ -311,6 +394,7 @@ func (game *Game) renderBackground() {
 // Load chunk to given coordinates.
 // If there is no chunk generated, generate it.
 // If there is generated chunk, load it from file and bake it.
+/*
 func (game *Game) loadChunk(seed *Seed, worldChunkCoord WorldChunkCoord) {
 	sectorCoord, chunkCoord := worldChunkCoord.Parse()
 	log.Printf("Load chunk: %s -> %s, %s\n", worldChunkCoord, sectorCoord, chunkCoord)
@@ -324,29 +408,35 @@ func (game *Game) loadChunk(seed *Seed, worldChunkCoord WorldChunkCoord) {
 	game.terrain.SetChunk(worldChunkCoord, chunk)
 	game.terrain.BakeChunk(game.world, game.dic, worldChunkCoord)
 }
+*/
 
+/*
 func (game *Game) loadSector(seed *Seed, worldSectorCoord WorldSectorCoord) {
 	sector := game.terrain.GetSector(worldSectorCoord)
 	if sector != nil {
-		// do something
+		return
 	}
 
-	sector = GenerateSector(seed, worldSectorCoord)
+	// try to load from file. if there is no file, generate it.
+	sector = LoadSector(worldSectorCoord)
+	if sector == nil {
+		sector = GenerateSector(seed, worldSectorCoord)
+	}
+
 	game.terrain.SetSector(sector)
 	for _, chunk := range sector.Chunks {
 		game.terrain.BakeChunk(game.world, game.dic, CombineWorldChunkCoord(worldSectorCoord, chunk.coord))
 	}
 }
+*/
 
-// Unload chunk at given coordinates.
-// If the chunk is far from player, unload that chunk to manage memories.
-// When unloading chunk, mesh and body will destroyed and save it to file.
-func (game *Game) unloadChunk(worldChunkCoord WorldChunkCoord) {
-	log.Printf("Unload chunk: %s\n", worldChunkCoord)
-	chunk := game.terrain.GetChunk(worldChunkCoord)
-	if chunk != nil {
-		chunk.Destroy()
-		//game.terrain.DeleteChunk(worldChunkCoord)// TODO
+func (game *Game) unloadSector(worldSectorCoord WorldSectorCoord) {
+	log.Printf("unload sector: %s\n", worldSectorCoord)
+
+	sector := game.terrain.GetSector(worldSectorCoord)
+	if sector != nil {
+		sector.Destroy()
+		game.terrain.DeleteSector(worldSectorCoord)
 	}
 }
 
@@ -386,10 +476,16 @@ func (game Game) OnEvent(event Event) {
 
 			if button == MOUSE_BUTTON_LEFT {
 				chunk.Set(NewBlock(blockCoord, ""))
+				chunk.body.Clear()
 				game.terrain.BakeChunk(game.world, game.dic, worldChunkCoord)
+				chunk.mesh.Bake()
+				chunk.body.Bake()
 			} else if button == MOUSE_BUTTON_RIGHT {
 				chunk.Set(NewBlock(blockCoord, "stone"))
+				chunk.body.Clear()
 				game.terrain.BakeChunk(game.world, game.dic, worldChunkCoord)
+				chunk.mesh.Bake()
+				chunk.body.Bake()
 			}
 		}
 	case ScrollEvent:

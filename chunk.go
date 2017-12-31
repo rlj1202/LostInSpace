@@ -19,6 +19,7 @@ func NewChunk(coord ChunkCoord) *Chunk {
 			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID))
 		}
 	}
+	chunk.mesh = NewMesh(nil, nil, nil, nil)
 
 	return chunk
 }
@@ -45,6 +46,7 @@ func (chunk *Chunk) ForEach(f func(*Block)) {
 	}
 }
 
+// Deallocate vao, vbo, ebo and b2body.
 func (chunk *Chunk) Destroy() {
 	chunk.mesh.Destroy()
 	chunk.body.Destroy()

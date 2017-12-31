@@ -11,6 +11,7 @@ func NewBlockEntity(world *World) *BlockEntity {
 	entity := new(BlockEntity)
 	entity.blocks = make(map[BlockCoord]*Block)
 	entity.Body = world.CreateBody(true)
+	entity.Mesh = NewMesh(nil, nil, nil, nil)
 
 	return entity
 }
@@ -30,15 +31,12 @@ func (entity *BlockEntity) ForEach(f func(*Block)) {
 }
 
 func (entity *BlockEntity) Bake(world *World, dic *BlockTypeDictionary) {
-	positions, _, coords, indices := BakeBlockStorageMesh(entity, dic)
+	BakeBlockStorageMesh(entity.Mesh, entity, dic)
+	entity.Mesh.Bake()
 
-	if entity.Mesh == nil {
-		entity.Mesh = NewMesh(positions, nil, coords, indices)
-	} else {
-		entity.Mesh.Set(positions, nil, coords, indices)
-	}
-
+	entity.Body.Clear()
 	BakeBlockStorageBody(entity.Body, entity, dic)
+	entity.Body.Bake()
 }
 
 func (entity *BlockEntity) Destroy() {

@@ -26,8 +26,9 @@ func NewPlayer(world *World, texture Texture) *Player {
 	)
 	player.Texture = texture
 	player.Body = world.CreateBody(true)
-	player.Body.CreateCircleFixture(1.0, 0.2, 0.2, 0.49)
+	player.Body.AddCircleFixture(1.0, 0.2, 0.2, 0.49)
 	player.Body.SetLinearDamping(2.0)
+	player.Body.Bake()
 
 	return player
 }
