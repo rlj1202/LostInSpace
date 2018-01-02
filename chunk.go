@@ -19,7 +19,6 @@ func NewChunk(coord ChunkCoord) *Chunk {
 			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID))
 		}
 	}
-	chunk.mesh = NewMesh(nil, nil, nil, nil)
 
 	return chunk
 }
@@ -65,6 +64,22 @@ func (chunk *Chunk) GetAABB() *AABB {
 	}
 
 	return chunk.aabb
+}
+
+func (chunk *Chunk) Bake(world *World, dic *BlockTypeDictionary, coord WorldChunkCoord) {
+	if chunk.mesh == nil {
+		chunk.mesh = NewMesh(nil, nil, nil, nil)
+	}
+	BakeBlockStorageMesh(chunk.mesh, chunk, dic)
+
+	if chunk.body == nil {
+		chunk.body = world.CreateBody(false)
+		chunk.body.SetPosition(
+			float64(coord.X*CHUNK_WIDTH),
+			float64(coord.Y*CHUNK_HEIGHT),
+		)
+	}
+	BakeBlockStorageBody(chunk.body, chunk, dic)
 }
 
 func blockIndex(coord BlockCoord) int {

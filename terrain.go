@@ -80,21 +80,3 @@ func (terrain *Terrain) GetBlock(coord WorldBlockCoord) *Block {
 
 	return chunk.At(blockCoord)
 }
-
-func (terrain *Terrain) BakeChunk(world *World, dic *BlockTypeDictionary, coord WorldChunkCoord) {
-	chunk := terrain.GetChunk(coord)
-	if chunk == nil {
-		return
-	}
-
-	BakeBlockStorageMesh(chunk.mesh, chunk, dic)
-
-	if chunk.body == nil {
-		chunk.body = world.CreateBody(false)
-		chunk.body.SetPosition(
-			float64(coord.X*CHUNK_WIDTH),
-			float64(coord.Y*CHUNK_HEIGHT),
-		)
-	}
-	BakeBlockStorageBody(chunk.body, chunk, dic)
-}

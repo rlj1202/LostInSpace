@@ -139,6 +139,14 @@ func (coord BlockCoord) Valid() bool {
 	return 0 <= coord.X && coord.X < CHUNK_WIDTH && 0 <= coord.Y && coord.Y < CHUNK_HEIGHT
 }
 
+func (coord WorldSectorCoord) Distance(other WorldSectorCoord) float64 {
+	return math.Sqrt(coord.DistanceSquared(other))
+}
+
+func (coord WorldSectorCoord) DistanceSquared(other WorldSectorCoord) float64 {
+	return math.Pow(float64(coord.X-other.X), 2) + math.Pow(float64(coord.Y-other.Y), 2)
+}
+
 func (coord WorldSectorCoord) Left() WorldSectorCoord {
 	return WorldSectorCoord{coord.X - 1, coord.Y}
 }
