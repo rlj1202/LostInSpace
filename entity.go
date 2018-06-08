@@ -10,7 +10,7 @@ type BlockEntity struct {
 func NewBlockEntity(world *World) *BlockEntity {
 	entity := new(BlockEntity)
 	entity.blocks = make(map[BlockCoord]*Block)
-	entity.Body = world.CreateBody(true)
+	entity.Body = world.CreateBody(DYNAMIC)
 	entity.Mesh = NewMesh(nil, nil, nil, nil)
 
 	return entity

@@ -94,26 +94,6 @@ func (mesh *Mesh) Bake() {
 	mesh.elementsCount = int32(len(mesh.Indices))
 }
 
-// TODO Deprecated
-func (mesh *Mesh) Set(positions, colors, texCoords []float32, indices []uint16) {
-	gl.BindVertexArray(mesh.vao)
-	if positions != nil {
-		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.positionBuffer)
-		gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(positions)*4, gl.Ptr(positions))
-	}
-	if colors != nil {
-		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.colorBuffer)
-		gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(colors)*4, gl.Ptr(colors))
-	}
-	if texCoords != nil {
-		gl.BindBuffer(gl.ARRAY_BUFFER, mesh.texCoordBuffer)
-		gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(texCoords)*4, gl.Ptr(texCoords))
-	}
-	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ibo)
-	gl.BufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, len(indices)*2, gl.Ptr(indices))
-	mesh.elementsCount = int32(len(indices))
-}
-
 func (mesh *Mesh) Destroy() {
 	if mesh.positionBuffer != 0 {
 		gl.DeleteBuffers(1, &mesh.positionBuffer)

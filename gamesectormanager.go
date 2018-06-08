@@ -44,7 +44,7 @@ func sectorManager(game *Game) {
 
 				sector = LoadSector(coord)
 				if sector == nil {
-					sector = GenerateSector(game.seed, coord)
+					sector = GenerateSector(game.terrain.Seed, coord)
 				}
 
 				for _, chunk := range sector.Chunks {

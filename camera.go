@@ -24,12 +24,16 @@ type Camera struct {
 func NewCamera(width, height float64) *Camera {
 	camera := new(Camera)
 	camera.zoom = 1.0
+	camera.SetSize(width, height)
+
+	return camera
+}
+
+func (camera *Camera) SetSize(width, height float64) {
 	camera.hwidth = width / 2.0
 	camera.hheight = height / 2.0
 
 	camera.createProjectionMat()
-
-	return camera
 }
 
 func (camera *Camera) SetTarget(body *Body) {

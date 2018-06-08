@@ -16,7 +16,7 @@ func NewChunk(coord ChunkCoord) *Chunk {
 	chunk.coord = coord
 	for y := 0; y < CHUNK_HEIGHT; y++ {
 		for x := 0; x < CHUNK_WIDTH; x++ {
-			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID))
+			chunk.Set(NewBlock(BlockCoord{uint8(x), uint8(y)}, BLOCK_TYPE_VOID, 0))
 		}
 	}
 
@@ -73,7 +73,7 @@ func (chunk *Chunk) Bake(world *World, dic *BlockTypeDictionary, coord WorldChun
 	BakeBlockStorageMesh(chunk.mesh, chunk, dic)
 
 	if chunk.body == nil {
-		chunk.body = world.CreateBody(false)
+		chunk.body = world.CreateBody(STATIC)
 		chunk.body.SetPosition(
 			float64(coord.X*CHUNK_WIDTH),
 			float64(coord.Y*CHUNK_HEIGHT),

@@ -1,6 +1,7 @@
 package lostinspace
 
 import (
+	"image"
 	"log"
 
 	"github.com/go-gl/gl/v4.1-compatibility/gl"
@@ -17,7 +18,7 @@ func init() {
 	}
 }
 
-func NewWindow(width, height int, title string, resizable bool) *Window {
+func NewWindow(width, height int, title string, icons []image.Image, resizable bool) *Window {
 	if resizable {
 		glfw.WindowHint(glfw.Resizable, glfw.True)
 	} else {
@@ -33,11 +34,14 @@ func NewWindow(width, height int, title string, resizable bool) *Window {
 		panic(err)
 	}
 
+	window.SetIcon(icons)
+
 	window.SetKeyCallback(keyInput)
 	window.SetMouseButtonCallback(mouseInput)
 	window.SetScrollCallback(scrollInput)
 	window.SetCursorEnterCallback(cursorEnterInput)
 	window.SetCursorPosCallback(cursorPosInput)
+	window.SetSizeCallback(sizeInput)
 	window.MakeContextCurrent()
 	glfw.SwapInterval(1)
 
@@ -118,5 +122,12 @@ func cursorPosInput(w *glfw.Window, xpos, ypos float64) {
 	PushEvent(CursorPosEvent{
 		XPos: xpos,
 		YPos: ypos,
+	})
+}
+
+func sizeInput(w *glfw.Window, width, height int) {
+	PushEvent(WindowSizeEvent{
+		Width:  width,
+		Height: height,
 	})
 }

@@ -3,6 +3,7 @@ package lostinspace
 // Terrian is set of chunks.
 type Terrain struct {
 	Sectors map[WorldSectorCoord]*Sector
+	*Seed
 }
 
 func NewTerrain() *Terrain {

@@ -21,7 +21,11 @@ type BlockTypeDictionary struct {
 
 // Struct to store informations about block type.
 type BlockTypeDescriptor struct {
+	// BlockType is id to distinguish block type.
+	// It has to be unique.
 	BlockType
+
+	// Name will be shown in game.
 	Name string
 
 	Density     float64
@@ -31,6 +35,10 @@ type BlockTypeDescriptor struct {
 	//
 	// (x, y, x, y, x, y, ...)
 	CollisionVertices []Vec2
+	// Fixed property represents whether a block can move or can't.
+	// Non-fixed block will be create as seperated body from blockcontainer
+	// and will have a joint (prismatic joint for example) to stick together.
+	Fixed bool
 
 	TextureFile *os.File
 
@@ -65,7 +73,8 @@ func (desc *BlockTypeDescriptor) String() string {
 			Density: %f,
 			Friction: %f,
 			Restitution: %f,
+			Fixed: %t,
 		}`,
-		desc.BlockType, desc.Name, desc.Density, desc.Friction, desc.Restitution,
+		desc.BlockType, desc.Name, desc.Density, desc.Friction, desc.Restitution, desc.Fixed,
 	)
 }

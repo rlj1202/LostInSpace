@@ -29,6 +29,11 @@ type CursorPosEvent struct {
 	YPos float64
 }
 
+type WindowSizeEvent struct {
+	Width  int
+	Height int
+}
+
 func (event KeyboardEvent) Name() string {
 	return "keyboardEvent"
 }
@@ -47,4 +52,8 @@ func (event CursorEnterEvent) Name() string {
 
 func (event CursorPosEvent) Name() string {
 	return "cursorPosEvent"
+}
+
+func (event WindowSizeEvent) Name() string {
+	return "windowSizeEvent"
 }

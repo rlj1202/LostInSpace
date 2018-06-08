@@ -7,10 +7,12 @@ type Block struct {
 	coord BlockCoord
 }
 
-func NewBlock(blockCoord BlockCoord, blockType BlockType) *Block {
+func NewBlock(blockCoord BlockCoord, blockType BlockType, face int) *Block {
 	block := &Block{
 		BlockType: blockType,
-		coord:     blockCoord,
+		FrontFace: face,
+
+		coord: blockCoord,
 	}
 
 	return block

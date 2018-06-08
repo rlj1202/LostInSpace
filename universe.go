@@ -2,15 +2,17 @@ package lostinspace
 
 import (
 	"os"
+	"time"
 )
 
 // Yes, universe. This is UNIVERSE.
 // Contains whole things of the world.
 //
-//  universe/          # a directory which contains all infos about an universe.
-//      data.gob       # blah blah
-//      somedata.gob
-//      blahblah.gob
+//  universe/              # A directory which contains all informations about an universe.
+//      sectors/           # Each sector is saved into one file.
+//          sector_x_y.gob
+//          sector_x_y.gob
+//          ...
 //
 // data structure
 //
@@ -45,10 +47,11 @@ import (
 //      },
 //  }
 type Universe struct {
+	*Terrain
+
 	dir *os.File
 
-	*World
-	*Terrain
+	world    *World
 	player   *Player
 	entities []*BlockEntity
 }
@@ -58,8 +61,8 @@ func NewUniverse(dir *os.File, playerTexFile *os.File) *Universe {
 
 	universe := new(Universe)
 	universe.dir = dir
-	universe.World = NewWorld()
-	universe.player = NewPlayer(universe.World, playerTex)
+	universe.world = NewWorld()
+	universe.player = NewPlayer(universe.world, playerTex)
 	universe.Terrain = NewTerrain()
 	universe.entities = make([]*BlockEntity, 0)
 
@@ -67,15 +70,17 @@ func NewUniverse(dir *os.File, playerTexFile *os.File) *Universe {
 }
 
 func (universe *Universe) CreateBlockEntity() *BlockEntity {
-	entity := NewBlockEntity(universe.World)
+	entity := NewBlockEntity(universe.world)
 
 	return entity
 }
 
-// Save all informations to dir.
-func (universe *Universe) Save() {
+func (universe *Universe) Update(dt time.Duration) {
+	universe.world.Update(dt)
 }
 
-// Load all informations from dir.
-func (universe *Universe) Load() {
+func (universe *Universe) SaveSector(worldSectorCoord WorldSectorCoord) {
+}
+
+func (universe *Universe) LoadSector(worldSectorCoord WorldSectorCoord) {
 }

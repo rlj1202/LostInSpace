@@ -26,7 +26,7 @@ func GenerateChunk(seed *Seed, worldChunkCoord WorldChunkCoord) *Chunk {
 	for y := uint8(0); y < CHUNK_HEIGHT; y++ {
 		for x := uint8(0); x < CHUNK_WIDTH; x++ {
 			blockCoord := BlockCoord{x, y}
-			block := NewBlock(blockCoord, BLOCK_TYPE_VOID)
+			block := NewBlock(blockCoord, BLOCK_TYPE_VOID, 0)
 
 			worldCoord := CombineWorldBlockCoord(sectorCoord, chunkCoord, blockCoord)
 
