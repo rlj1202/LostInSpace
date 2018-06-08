@@ -3,8 +3,16 @@ package lostinspace
 import (
 	"time"
 
-	"github.com/ByteArena/box2d"
+	"github.com/rlj1202/box2d"
 )
+
+const (
+	STATIC BodyType = iota
+	DYNAMIC
+	KINEMATIC
+)
+
+type BodyType int
 
 // World is where bodies are interact.
 // Such as chunks, entities, etc.
@@ -20,6 +28,13 @@ type Body struct {
 	fixDefs []*box2d.B2FixtureDef
 
 	b2body *box2d.B2Body
+}
+
+type Joint struct { // TODO
+	world *World
+
+	jointDef box2d.B2JointDefInterface
+	b2joint  box2d.B2JointInterface
 }
 
 type Fixture struct {
@@ -38,12 +53,15 @@ func (world *World) Update(dt time.Duration) {
 	world.b2world.Step(dt.Seconds(), 8, 3)
 }
 
-func (world *World) CreateBody(movable bool) *Body {
+func (world *World) CreateBody(bodyType BodyType) *Body {
 	bodyDef := box2d.NewB2BodyDef()
-	if movable {
-		bodyDef.Type = box2d.B2BodyType.B2_dynamicBody
-	} else {
+	switch bodyType {
+	case STATIC:
 		bodyDef.Type = box2d.B2BodyType.B2_staticBody
+	case DYNAMIC:
+		bodyDef.Type = box2d.B2BodyType.B2_dynamicBody
+	case KINEMATIC:
+		bodyDef.Type = box2d.B2BodyType.B2_kinematicBody
 	}
 
 	body := new(Body)
@@ -51,6 +69,44 @@ func (world *World) CreateBody(movable bool) *Body {
 	body.bodyDef = bodyDef
 
 	return body
+}
+
+func (world *World) CreatePrismaticJoint(
+	bodyA, bodyB *Body,
+	anchorA, anchorB, axisA Vec2,
+	angle float64,
+	limited bool, min, max float64,
+	motored bool, motorSpeed, motorForce float64,
+	collide bool,
+) *Joint { // TODO wtf how can i create joints in bytearena/box2d? there is no fucking single examples about joints.
+	def := box2d.MakeB2PrismaticJointDef()
+
+	def.BodyA = bodyA.b2body
+	def.BodyB = bodyB.b2body
+
+	def.LocalAnchorA = toBox2dVec2(anchorA)
+	def.LocalAnchorB = toBox2dVec2(anchorB)
+	def.LocalAxisA = toBox2dVec2(axisA)
+
+	def.ReferenceAngle = angle
+
+	def.EnableLimit = limited
+	def.LowerTranslation = min
+	def.UpperTranslation = max
+
+	def.EnableMotor = motored
+	def.MotorSpeed = motorSpeed
+	def.MaxMotorForce = motorForce
+
+	def.CollideConnected = collide
+
+	b2joint := world.b2world.CreateJoint(&def) // pass pointer to joint def
+
+	joint := new(Joint)
+	joint.jointDef = &def
+	joint.b2joint = b2joint
+
+	return joint
 }
 
 func (body *Body) AddCircleFixture(density, friction, restitution, radius float64) {
@@ -157,4 +213,8 @@ func (body *Body) Destroy() {
 	b2world := body.b2body.GetWorld()
 	b2world.DestroyBody(body.b2body)
 	body.b2body = nil
+}
+
+func toBox2dVec2(vec Vec2) box2d.B2Vec2 {
+	return box2d.B2Vec2(vec)
 }

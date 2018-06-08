@@ -77,15 +77,14 @@ type Game struct {
 	player  *Player
 	camera  *Camera
 
-	seed *Seed
-
 	quit              chan bool
 	bakeChunkQueue    chan *Chunk
 	destroyChunkQueue chan *Chunk
 	chunksToDraw      map[WorldChunkCoord]*Chunk
 
-	shader *ShaderProgram
-	entity *BlockEntity
+	shader    *ShaderProgram
+	entity    *BlockEntity
+	newEntity *BlockEntity
 
 	msaaTex uint32
 	msaaFbo uint32
@@ -112,6 +111,7 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 	game.window = window
 	game.world = NewWorld()
 	game.terrain = NewTerrain()
+	game.terrain.Seed = NewSeed(2)
 	game.dic = dic
 	game.dic.arrayTex.Bind(1)
 	game.player = NewPlayer(game.world, playerTex)
@@ -119,9 +119,6 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 	width, height := glfw.GetCurrentContext().GetSize()
 	game.camera = NewCamera(20, 20*float64(height)/float64(width))
 	game.camera.SetTarget(game.player.Body)
-
-	seed := NewSeed(2)
-	game.seed = seed
 
 	game.bakeChunkQueue = make(chan *Chunk, 16*16)
 	game.destroyChunkQueue = make(chan *Chunk, 16*16)
@@ -144,29 +141,7 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 		panic(err)
 	}
 	game.bgTex = NewTexture2D(bgTexFile)
-	imageW, imageH := game.bgTex.GetSize()
-	frameW, frameH := glfw.GetCurrentContext().GetSize()
-	hu, hv := float32(frameW)/float32(imageW)/2.0, float32(frameH)/float32(imageH)/2.0
-	game.bgHu = hu
-	game.bgHv = hv
-	game.bgRatio = float32(imageH) / float32(imageW)
-	game.quad = NewMesh(
-		[]float32{
-			-1, 1, 0,
-			-1, -1, 0,
-			1, -1, 0,
-			1, 1, 0,
-		},
-		nil,
-		[]float32{
-			-hu, -hv, 0,
-			-hu, hv, 0,
-			hu, hv, 0,
-			hu, -hv, 0,
-		},
-		[]uint16{0, 1, 2, 0, 2, 3},
-	)
-	game.quad.Bake()
+	game.bakeBackgroundQuad()
 
 	game.shader = NewShaderProgram(vs, fs)
 	game.shader.UniformInt("tex2D", 0)
@@ -181,12 +156,87 @@ func NewGame(window *Window, dic *BlockTypeDictionary) *Game {
 	RegisterEventListener(game)
 
 	game.entity = NewBlockEntity(game.world)
-	game.entity.Set(NewBlock(BlockCoord{0, 0}, "stone"))
-	game.entity.Set(NewBlock(BlockCoord{1, 1}, "stone"))
-	game.entity.Set(NewBlock(BlockCoord{2, 0}, "stone"))
+
+	game.entity.Set(NewBlock(BlockCoord{0, 0}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 1}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 2}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 3}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 4}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 5}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{0, 6}, "stone", 0))
+
+	game.entity.Set(NewBlock(BlockCoord{1, 0}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{2, 0}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{3, 0}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{4, 0}, "stone", 0))
+
+	game.entity.Set(NewBlock(BlockCoord{4, 1}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{4, 2}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{4, 3}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{4, 4}, "door0", 1))
+	game.entity.Set(NewBlock(BlockCoord{4, 5}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{4, 6}, "stone", 0))
+
+	game.entity.Set(NewBlock(BlockCoord{1, 6}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{2, 6}, "stone", 0))
+	game.entity.Set(NewBlock(BlockCoord{3, 6}, "stone", 0))
+
 	game.entity.Bake(game.world, dic)
+	game.entity.SetPosition(0, -20)
+
+	game.newEntity = NewBlockEntity(game.world)
+	game.newEntity.Set(NewBlock(BlockCoord{0, 0}, "stone", 0))
+	game.newEntity.Set(NewBlock(BlockCoord{1, 1}, "stone", 0))
+	game.newEntity.Set(NewBlock(BlockCoord{2, 0}, "stone", 0))
+	game.newEntity.Bake(game.world, dic)
+	game.newEntity.SetPosition(0, -25)
+
+	game.world.CreatePrismaticJoint( // TODO It seems about to work but...
+		game.entity.Body, game.newEntity.Body,
+		Vec2{0, -7}, Vec2{0, 0}, Vec2{0, 1},
+		0,
+		false, -20, 20,
+		false, 0, 1,
+		false,
+	)
 
 	return game
+}
+
+func (game *Game) bakeBackgroundQuad() {
+	imageW, imageH := game.bgTex.GetSize()
+	frameW, frameH := glfw.GetCurrentContext().GetSize()
+	hu, hv := (float32(frameW)/float32(imageW))/2.0, (float32(frameH)/float32(imageH))/2.0
+	game.bgHu = hu
+	game.bgHv = hv
+	game.bgRatio = float32(imageH) / float32(imageW)
+
+	positions := []float32{
+		-1, 1, 0,
+		-1, -1, 0,
+		1, -1, 0,
+		1, 1, 0,
+	}
+	coords := []float32{
+		-hu, -hv, 0,
+		-hu, hv, 0,
+		hu, hv, 0,
+		hu, -hv, 0,
+	}
+	indices := []uint16{
+		0, 1, 2,
+		0, 2, 3,
+	}
+
+	if game.quad == nil {
+		game.quad = NewMesh(positions, nil, coords, indices)
+	} else {
+		game.quad.Positions = positions
+		game.quad.Colors = nil
+		game.quad.TexCoords = coords
+		game.quad.Indices = indices
+	}
+	game.quad.Bake()
 }
 
 // Generate chunk list for rendering.
@@ -286,16 +336,19 @@ func (game *Game) Render() {
 	// render chunks
 	game.renderChunks()
 
-	// render an entity
-	x, y := game.entity.Body.GetPosition()
-	angle := game.entity.Body.GetAngle()
-	game.shader.UniformMat4("translate", mgl32.Translate3D(
-		float32(x),
-		float32(y),
-		0,
-	))
-	game.shader.UniformMat4("rotate", mgl32.HomogRotate3DZ(float32(angle)))
-	game.entity.Mesh.Draw()
+	// render entities TODO
+	entities := []*BlockEntity{game.entity, game.newEntity}
+	for _, entity := range entities {
+		x, y := entity.Body.GetPosition()
+		angle := entity.Body.GetAngle()
+		game.shader.UniformMat4("translate", mgl32.Translate3D(
+			float32(x),
+			float32(y),
+			0,
+		))
+		game.shader.UniformMat4("rotate", mgl32.HomogRotate3DZ(float32(angle)))
+		entity.Mesh.Draw()
+	}
 
 	// completed rendering
 	gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
@@ -349,45 +402,6 @@ func (game *Game) renderBackground() {
 	game.quad.Draw()
 }
 
-// Load chunk to given coordinates.
-// If there is no chunk generated, generate it.
-// If there is generated chunk, load it from file and bake it.
-/*
-func (game *Game) loadChunk(seed *Seed, worldChunkCoord WorldChunkCoord) {
-	sectorCoord, chunkCoord := worldChunkCoord.Parse()
-	log.Printf("Load chunk: %s -> %s, %s\n", worldChunkCoord, sectorCoord, chunkCoord)
-
-	chunk := game.terrain.GetChunk(worldChunkCoord)
-	if chunk != nil {
-		chunk.Destroy()
-	}
-
-	chunk = GenerateChunk(seed, worldChunkCoord)
-	game.terrain.SetChunk(worldChunkCoord, chunk)
-	game.terrain.BakeChunk(game.world, game.dic, worldChunkCoord)
-}
-*/
-
-/*
-func (game *Game) loadSector(seed *Seed, worldSectorCoord WorldSectorCoord) {
-	sector := game.terrain.GetSector(worldSectorCoord)
-	if sector != nil {
-		return
-	}
-
-	// try to load from file. if there is no file, generate it.
-	sector = LoadSector(worldSectorCoord)
-	if sector == nil {
-		sector = GenerateSector(seed, worldSectorCoord)
-	}
-
-	game.terrain.SetSector(sector)
-	for _, chunk := range sector.Chunks {
-		game.terrain.BakeChunk(game.world, game.dic, CombineWorldChunkCoord(worldSectorCoord, chunk.coord))
-	}
-}
-*/
-
 func (game *Game) unloadSector(worldSectorCoord WorldSectorCoord) {
 	log.Printf("unload sector: %s\n", worldSectorCoord)
 
@@ -433,13 +447,13 @@ func (game Game) OnEvent(event Event) {
 			}
 
 			if button == MOUSE_BUTTON_LEFT {
-				chunk.Set(NewBlock(blockCoord, ""))
+				chunk.Set(NewBlock(blockCoord, "", 0))
 				chunk.body.Clear()
 				chunk.Bake(game.world, game.dic, worldChunkCoord)
 				chunk.mesh.Bake()
 				chunk.body.Bake()
 			} else if button == MOUSE_BUTTON_RIGHT {
-				chunk.Set(NewBlock(blockCoord, "stone"))
+				chunk.Set(NewBlock(blockCoord, "stone", 0))
 				chunk.body.Clear()
 				chunk.Bake(game.world, game.dic, worldChunkCoord)
 				chunk.mesh.Bake()
@@ -452,5 +466,17 @@ func (game Game) OnEvent(event Event) {
 
 		camera := game.camera
 		camera.SetZoom(camera.GetZoom() + yoff/20.0)
+	case WindowSizeEvent:
+		windowSizeEvent := event.(WindowSizeEvent)
+		width, height := windowSizeEvent.Width, windowSizeEvent.Height
+		ratio := float64(height) / float64(width)
+
+		game.camera.SetSize(20, 20*ratio)
+		game.bakeBackgroundQuad()
+
+		gl.BindTexture(gl.TEXTURE_2D_MULTISAMPLE, game.msaaTex)
+		gl.TexImage2DMultisample(gl.TEXTURE_2D_MULTISAMPLE, 4, gl.RGBA8, int32(width), int32(height), false)
+
+		gl.Viewport(0, 0, int32(width), int32(height))
 	}
 }
